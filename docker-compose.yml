@@ -1,0 +1,42 @@
+version: '3.9'
+
+networks:
+  makerworks-net:
+    external: true
+
+services:
+    backend:
+    container_name: makerworks-backend
+    build: .
+    volumes:
+      - ./uploads:/app/uploads
+    env_file:
+      - .env
+    networks:
+      - makerworks-net
+    ports:
+      - "49152:8000"
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15
+    container_name: makerworks-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=makerworks
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - makerworks-net
+
+  redis:
+    image: redis:7
+    container_name: makerworks-redis
+    networks:
+      - makerworks-net
+
+volumes:
+  pgdata:

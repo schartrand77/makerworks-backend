@@ -1,0 +1,31 @@
+makerworks-backend2/
+├── alembic/
+│   ├── env.py                      # Alembic environment config (you selected this)
+│   ├── script.py.mako              # Template for new revisions
+│   └── versions/                   # Auto-generated migration scripts
+│       └── <timestamp>_initial.py  # Initial schema migration
+├── alembic.ini                     # Alembic DB config
+├── app/
+│   ├── __init__.py
+│   ├── main.py                     # FastAPI entrypoint
+│   ├── database.py                 # SQLAlchemy async engine + session
+│   ├── models.py                   # SQLAlchemy ORM models (User, ModelMetadata, etc.)
+│   ├── redis_client.py             # Redis connection helper
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── file_utils.py           # File I/O: sanitize, save, move, validate
+│   │   └── auth.py                 # Password hashing and verification
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── upload.py               # File upload + Blender metadata processing
+│   │   └── auth.py                 # User signup/login
+│   └── scripts/
+│       └── extract_metadata.py     # Blender headless metadata extraction
+├── uploads/                        # Mounted Unraid disk storage
+│   ├── tmp/                        # Temp incoming files
+│   ├── models/                     # Finalized STL/3MF files
+│   └── previews/                   # Blender-generated PNG thumbnails
+├── Dockerfile                      # Backend Docker build
+├── docker-compose.yml              # Multi-service orchestration
+├── requirements.txt                # Python dependencies
+└── .env                            # Environment variables (DATABASE_URL, REDIS_URL, etc.)
