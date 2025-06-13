@@ -1,14 +1,14 @@
-# app/routes/upload.py
-
 import os
 import json
 import subprocess
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import ModelMetadata
+from app.schemas import ModelUploadRequest, ModelOut
+from app.utils.auth import get_current_user, TokenData
 from app.utils.storage import (
     save_upload_to_disk,
     move_file,
@@ -18,25 +18,26 @@ from app.utils.storage import (
 )
 from app.utils.validation import validate_file_size
 
-# from app.routes.auth import get_current_user
-# from app.schemas import User  # Optional: enable for uploader auth
+BLENDER_PATH = "/usr/bin/blender"  # Adjust as needed for Docker/host
 
-BLENDER_PATH = "/usr/bin/blender"  # Update if needed
-
-router = APIRouter(prefix="/upload", tags=["upload"])
+router = APIRouter(prefix="/upload", tags=["Upload"])
 
 
-@router.post("/model")
+@router.post(
+    "/model",
+    summary="Upload STL/3MF model and extract metadata",
+    status_code=status.HTTP_201_CREATED,
+)
 async def upload_model(
+    data: ModelUploadRequest = Depends(ModelUploadRequest.as_form),
     file: UploadFile = File(...),
-    name: str = Form(...),
-    description: str = Form(...),
-    tags: str = Form(""),
-    category: str = Form("uncategorized"),
-    role: str = Form("user"),
     db: AsyncSession = Depends(get_db),
-    # user: User = Depends(get_current_user)  # Optional: secure upload
+    user: TokenData = Depends(get_current_user),
 ):
+    """
+    Uploads a 3D model file and associated metadata. Extracts volume, dimensions, and preview using Blender.
+    """
+
     if not is_valid_model_file(file.filename):
         raise HTTPException(status_code=400, detail="Invalid file type")
 
@@ -45,6 +46,7 @@ async def upload_model(
     json_out = tmp_path + ".json"
     preview_out = final_path.replace("/models/", "/previews/") + ".png"
 
+    # Save uploaded file to disk
     await save_upload_to_disk(file, tmp_path)
 
     try:
@@ -53,12 +55,22 @@ async def upload_model(
         os.remove(tmp_path)
         raise HTTPException(status_code=413, detail=str(e))
 
+    # Run Blender subprocess to extract metadata
     try:
         subprocess.run(
-            [BLENDER_PATH, "-b", "-P", "scripts/extract_metadata.py", "--", tmp_path, json_out, preview_out],
-            check=True
+            [
+                BLENDER_PATH,
+                "-b",
+                "-P",
+                "scripts/extract_metadata.py",
+                "--",
+                tmp_path,
+                json_out,
+                preview_out,
+            ],
+            check=True,
         )
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         os.remove(tmp_path)
         raise HTTPException(status_code=500, detail="Failed to extract metadata from model")
 
@@ -66,25 +78,28 @@ async def upload_model(
         os.remove(tmp_path)
         raise HTTPException(status_code=500, detail="Metadata extraction output missing")
 
-    with open(json_out, "r") as f:
-        try:
+    # Parse metadata
+    try:
+        with open(json_out, "r") as f:
             metadata = json.load(f)
-        except json.JSONDecodeError:
-            os.remove(tmp_path)
-            raise HTTPException(status_code=500, detail="Invalid metadata output format")
+    except json.JSONDecodeError:
+        os.remove(tmp_path)
+        raise HTTPException(status_code=500, detail="Invalid metadata output format")
 
+    # Move file to final location
     move_file(tmp_path, final_path)
 
+    # Save model entry in DB
     model = ModelMetadata(
         filename=unique_name,
         filepath=final_path,
         preview_image=preview_out,
-        uploader="user123",  # Replace with `user.id` if auth is enabled
-        role=role,
-        name=name,
-        description=description,
-        tags=tags,
-        category=category,
+        uploader=str(user.sub),
+        role=data.role,
+        name=data.name,
+        description=data.description,
+        tags=",".join(data.tags),
+        category=data.category,
         volume_mm3=metadata.get("volume_mm3", 0),
         dimensions_mm=metadata.get("dimensions_mm", {}),
         face_count=metadata.get("face_count", 0),
@@ -94,9 +109,4 @@ async def upload_model(
     await db.commit()
     await db.refresh(model)
 
-    return {
-        "status": "success",
-        "model_id": model.id,
-        "preview": preview_out,
-        "name": model.name,
-    }
+    return ModelOut.from_orm(model).serialize(role=user.role)

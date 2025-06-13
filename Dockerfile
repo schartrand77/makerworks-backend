@@ -1,22 +1,24 @@
-# Use a slim Python base image
 FROM python:3.11-slim
 
-# Set working directory
+# Set working dir
 WORKDIR /app
+COPY . .
+ENV PYTHONPATH="/app:/app/app"
 
-# Install dependencies early for cache efficiency
+# Install system deps
+RUN apt-get update && apt-get install -y \
+  build-essential gcc libpq-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+# Copy and install Python deps
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy app source
 COPY . .
 
-# Copy alembic migration files explicitly
-COPY alembic/ alembic/
-COPY alembic.ini .
+# Expose port
+EXPOSE 8000
 
-# Environment config
-ENV PYTHONUNBUFFERED=1
-
-# Start the FastAPI app via Uvicorn
+# Run app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

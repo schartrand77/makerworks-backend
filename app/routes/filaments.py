@@ -2,16 +2,15 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import Optional, List
+from pydantic import BaseModel
 
 from app.models import Filament
 from app.database import get_db
 from app.routes.auth import get_current_user
 from app.schemas import UserOut
 
-from pydantic import BaseModel
-from typing import Optional
-
-router = APIRouter(prefix="/filaments", tags=["filaments"])
+router = APIRouter(prefix="/api/v1/filaments", tags=["Filaments"])
 
 
 # --------- Schemas ---------
@@ -32,40 +31,59 @@ class FilamentUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class FilamentOut(BaseModel):
+    id: int
+    name: str
+    type: str
+    color: str
+    price_per_kg: float
+
+    class Config:
+        orm_mode = True
+
+
 # --------- Routes ---------
 
-@router.get("/", response_model=list[dict])
+@router.get(
+    "/",
+    summary="List all active filaments",
+    status_code=status.HTTP_200_OK,
+    response_model=List[FilamentOut],
+)
 def list_filaments(db: Session = Depends(get_db)):
-    """List all active filaments"""
-    filaments = db.query(Filament).filter(Filament.is_active == True).all()
-    return [
-        {
-            "id": f.id,
-            "name": f.name,
-            "type": f.type,
-            "color": f.color,
-            "price_per_kg": f.price_per_kg,
-        }
-        for f in filaments
-    ]
+    """
+    Return all active filament types in the system.
+    """
+    return db.query(Filament).filter(Filament.is_active == True).all()
 
 
-@router.post("/", response_model=dict)
+@router.post(
+    "/",
+    summary="Add a new filament (admin only)",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FilamentOut,
+)
 def add_filament(
     filament: FilamentCreate,
     db: Session = Depends(get_db),
     user: UserOut = Depends(get_current_user),
 ):
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    f = Filament(**filament.dict())
-    db.add(f)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
+
+    new_filament = Filament(**filament.dict())
+    db.add(new_filament)
     db.commit()
-    db.refresh(f)
-    return {"id": f.id, "name": f.name}
+    db.refresh(new_filament)
+    return new_filament
 
 
-@router.put("/{fid}", response_model=dict)
+@router.put(
+    "/{fid}",
+    summary="Update a filament (admin only)",
+    status_code=status.HTTP_200_OK,
+    response_model=FilamentOut,
+)
 def update_filament(
     fid: int,
     updates: FilamentUpdate,
@@ -73,32 +91,37 @@ def update_filament(
     user: UserOut = Depends(get_current_user),
 ):
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    filament = db.query(Filament).get(fid)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
+
+    filament = db.query(Filament).filter(Filament.id == fid).first()
     if not filament:
-        raise HTTPException(status_code=404, detail="Filament not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filament not found.")
+
     for field, value in updates.dict(exclude_unset=True).items():
         setattr(filament, field, value)
+
     db.commit()
     db.refresh(filament)
-    return {
-        "id": filament.id,
-        "name": filament.name,
-        "updated": True,
-    }
+    return filament
 
 
-@router.delete("/{fid}", response_model=dict)
+@router.delete(
+    "/{fid}",
+    summary="Soft-delete a filament (admin only)",
+    status_code=status.HTTP_200_OK,
+)
 def delete_filament(
     fid: int,
     db: Session = Depends(get_db),
     user: UserOut = Depends(get_current_user),
 ):
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    filament = db.query(Filament).get(fid)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
+
+    filament = db.query(Filament).filter(Filament.id == fid).first()
     if not filament:
-        raise HTTPException(status_code=404, detail="Filament not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filament not found.")
+
     filament.is_active = False
     db.commit()
     return {"deleted": True, "id": filament.id}

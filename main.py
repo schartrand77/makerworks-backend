@@ -1,6 +1,8 @@
+import os
 import random
 from fastapi import FastAPI
-
+from app.logging_config import configure_logging
+from app import __version__, logger
 from app.routes import (
     auth,
     upload,
@@ -9,20 +11,27 @@ from app.routes import (
     users,
     system,
     favorites,
-    checkout,  # ← Stripe checkout routes
+    checkout,
 )
 
-app = FastAPI(title="MakerWorks Backend")
+# Configure logging
+configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
 
-# Register API routes
-app.include_router(auth.router)
-app.include_router(upload.router)
+app = FastAPI(
+    title="MakerWorks Backend",
+    version=__version__,
+    description="FastAPI backend for MakerWorks: mesh uploads, preview rendering, pricing, checkout, and more.",
+)
+
+# Register routes with consistent /api prefix
+app.include_router(auth.router, prefix="/api")
+app.include_router(upload.router, prefix="/api")
 app.include_router(models.router, prefix="/api")
 app.include_router(filaments.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(favorites.router, prefix="/api")
-app.include_router(checkout.router, prefix="/api")  # ← Stripe session + webhook
+app.include_router(checkout.router, prefix="/api")
 
 # 🪩 Boot banner — randomized per startup
 boot_messages = [
@@ -48,4 +57,4 @@ boot_messages = [
     "🔧 Backend secured. Time to break things (safely).",
 ]
 
-print("\n" + random.choice(boot_messages) + "\n")
+logger.info(random.choice(boot_messages))

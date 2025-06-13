@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -6,16 +7,21 @@ from app.models import ModelMetadata, Favorite
 from app.routes.auth import get_current_user
 from app.schemas import UserOut, ModelOut
 
-router = APIRouter(prefix="/favorites", tags=["favorites"])
+router = APIRouter(prefix="/api/v1/favorites", tags=["Favorites"])
 
 
-@router.get("/", response_model=list[ModelOut])
+@router.get(
+    "/",
+    response_model=list[ModelOut],
+    summary="Get current user's favorited models",
+    status_code=status.HTTP_200_OK,
+)
 def get_user_favorites(
     db: Session = Depends(get_db),
     user: UserOut = Depends(get_current_user),
 ):
     """
-    Return all models the current user has favorited.
+    Retrieve all models favorited by the currently authenticated user.
     """
     favorites = (
         db.query(ModelMetadata)
@@ -26,31 +32,40 @@ def get_user_favorites(
     return favorites
 
 
-@router.post("/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{model_id}",
+    summary="Add model to favorites",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def add_to_favorites(
     model_id: int,
     db: Session = Depends(get_db),
     user: UserOut = Depends(get_current_user),
 ):
     """
-    Add a model to the current user's favorites.
+    Add a model to the authenticated user's favorites list.
     """
     exists = db.query(Favorite).filter_by(user_id=user.id, model_id=model_id).first()
-    if exists:
-        return  # Already a favorite — no-op
-    favorite = Favorite(user_id=user.id, model_id=model_id)
-    db.add(favorite)
-    db.commit()
+    if not exists:
+        favorite = Favorite(user_id=user.id, model_id=model_id)
+        db.add(favorite)
+        db.commit()
 
 
-@router.delete("/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{model_id}",
+    summary="Remove model from favorites",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def remove_from_favorites(
     model_id: int,
     db: Session = Depends(get_db),
     user: UserOut = Depends(get_current_user),
 ):
     """
-    Remove a model from the user's favorites.
+    Remove a model from the user's favorites list.
     """
     favorite = db.query(Favorite).filter_by(user_id=user.id, model_id=model_id).first()
     if not favorite:

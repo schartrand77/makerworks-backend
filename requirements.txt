@@ -1,15 +1,16 @@
 fastapi
 uvicorn[standard]
-sqlalchemy[asyncio]
-asyncpg
+sqlalchemy>=2.0
 psycopg2-binary
+asyncpg
 alembic
-passlib[bcrypt]
 python-multipart
+pydantic>=2.0
+email-validator
 aiofiles
 python-dotenv
-python-jose[cryptography]  # 🔐 JWT signing/verification
-python-dateutil            # 🗓️ ISO 8601 support, expiration parsing
-redis                      # 🔁 session caching, optional
-stripe>=12.0.0
-pydantic[email]
+redis
+httpx
+python-jose[cryptography]
+passlib[bcrypt]
+stripe

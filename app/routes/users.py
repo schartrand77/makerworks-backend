@@ -21,4 +21,19 @@ def update_user_profile(update: schemas.UserUpdate, db: Session = Depends(get_db
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(db: Session = Depends(get_db), user=Depends(get_current_user)):
     db.delete(user)
-    db.commit()
+    db.commit
+    
+@router.get(
+    "/admin/users",
+    summary="List all users (admin only)",
+    status_code=status.HTTP_200_OK,
+    response_model=list[schemas.PublicUserOut],)
+def admin_list_users(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+    users = db.query(models.User).order_by(models.User.created_at.desc()).all()
+    return [schemas.PublicUserOut.from_orm(u) for u in users]()
