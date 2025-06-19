@@ -32,19 +32,20 @@ from .models import (
     ModelUploadResponse,  # Optional: add if used
 )
 
+from .system import (
+    SystemStatus,
+)
+
 __all__ = [
     "UserLogin",
     "UserCreate",
     "UserOut",
     "UserUpdate",
-    "UserRegister",
     "UsernameAvailability",
     "Token",
     "TokenData",
     "TokenResponse",
-    "TokenPayload",
     "PublicUserOut",
-    "UserUpdate",
     "AvatarUpdate",
     "PasswordUpdate",
     "EmailUpdate",
@@ -56,4 +57,5 @@ __all__ = [
     "FilamentUpdate",
     "FilamentOut",
     "CheckoutRequest",
+    "SystemStatus",
 ]

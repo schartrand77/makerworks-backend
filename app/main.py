@@ -14,36 +14,57 @@ from app.routes import (
     system,
     favorites,
     checkout,
+    admin,
 )
 
-from app.config import settings  # <- Ensure config with UPLOAD_DIR exists
+from app.config import settings
 
-# Initialize app
+# -----------------------------------------------------
+# ✅ Initialize FastAPI app
+# -----------------------------------------------------
 app = FastAPI()
 
-# Serve uploaded files (e.g. avatars, models)
-app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+# -----------------------------------------------------
+# ✅ Apply CORS middleware *before* mounting routes
+# -----------------------------------------------------
+origins = [
+    "http://localhost:5173",
+    "http://192.168.1.191:5173",   # Mac local IP
+    "http://192.168.1.170:5173",   # Unraid local IP (raw)
+    "http://192.168.1.170:49152",  # Unraid Docker port mapping
+    "http://192.168.1.170:8000", 
+     "http://100.72.184.28:5173",  # Original backend port (important for preflight!)
+]
 
-# CORS middleware (adjust origins in prod)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change this in production!
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount all routers with consistent /api prefix
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
-app.include_router(models.router, prefix="/api/models", tags=["models"])
-app.include_router(filaments.router, prefix="/api/filaments", tags=["filaments"])
-app.include_router(users.router, prefix="/api/users", tags=["users"])
-app.include_router(system.router, prefix="/api/system", tags=["system"])
-app.include_router(favorites.router, prefix="/api/favorites", tags=["favorites"])
-app.include_router(checkout.router, prefix="/api/checkout", tags=["checkout"])
+# -----------------------------------------------------
+# ✅ Serve uploaded files (STLs, thumbnails, avatars)
+# -----------------------------------------------------
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
-# 🪩 Boot banner — randomized per startup
+# -----------------------------------------------------
+# ✅ Register API routes under /api/v1/*
+# -----------------------------------------------------
+app.include_router(auth.router,      prefix="/api/v1",           tags=["auth"])
+app.include_router(upload.router,    prefix="/api/v1/upload",    tags=["upload"])
+app.include_router(models.router,    prefix="/api/v1/models",    tags=["models"])
+app.include_router(filaments.router, prefix="/api/v1/filaments", tags=["filaments"])
+app.include_router(users.router,     prefix="/api/v1/users",     tags=["users"])
+app.include_router(system.router,    prefix="/api/v1/system",    tags=["system"])
+app.include_router(favorites.router, prefix="/api/v1/favorites", tags=["favorites"])
+app.include_router(checkout.router,  prefix="/api/v1/checkout",  tags=["checkout"])
+app.include_router(admin.router,     prefix="/api/v1/admin",     tags=["admin"])
+
+# -----------------------------------------------------
+# 🪩 Randomized startup banner
+# -----------------------------------------------------
 boot_messages = [
     "🧠 MakerWorks Backend online — thinking in polygons.",
     "🚀 Blender bots activated. Mesh metadata extraction commencing.",
@@ -66,6 +87,7 @@ boot_messages = [
     "🔍 Detecting overhangs... mocking silently.",
     "🔧 Backend secured. Time to break things (safely).",
 ]
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 logger.info(random.choice(boot_messages))

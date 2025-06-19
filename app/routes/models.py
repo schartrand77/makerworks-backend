@@ -1,6 +1,6 @@
 # app/routes/models.py
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -10,25 +10,30 @@ from app.schemas.models import ModelOut
 from app.schemas.token import TokenData
 from app.dependencies import get_current_user
 
-router = APIRouter(prefix="/api/v1/models", tags=["Models"])
+router = APIRouter(tags=["Models"])  # Removed prefix="/models"
 
 
 @router.get(
     "/",
-    summary="List all uploaded models",
+    summary="List uploaded models",
     status_code=status.HTTP_200_OK,
+    response_model=dict
 )
 async def list_models(
+    mine: bool = Query(False, description="Only return models uploaded by the current user"),
     db: AsyncSession = Depends(get_db),
     user: TokenData = Depends(get_current_user),
 ):
     """
-    List all uploaded models in reverse chronological order.
-    Response shape depends on user role (admin sees more metadata).
+    List all uploaded models.
+    If 'mine' is true, only return models uploaded by the current user.
     """
-    result = await db.execute(
-        select(ModelMetadata).order_by(ModelMetadata.uploaded_at.desc())
-    )
+    query = select(ModelMetadata).order_by(ModelMetadata.uploaded_at.desc())
+
+    if mine:
+        query = query.where(ModelMetadata.uploader == int(user.sub))
+
+    result = await db.execute(query)
     models = result.scalars().all()
 
     return {
@@ -43,6 +48,7 @@ async def list_models(
     "/duplicates",
     summary="List duplicate models (admin only)",
     status_code=status.HTTP_200_OK,
+    response_model=dict
 )
 async def get_duplicates(
     db: AsyncSession = Depends(get_db),

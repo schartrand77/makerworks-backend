@@ -7,7 +7,7 @@ from app.models import ModelMetadata, Favorite
 from app.routes.auth import get_current_user
 from app.schemas import UserOut, ModelOut
 
-router = APIRouter(prefix="/api/v1/favorites", tags=["Favorites"])
+router = APIRouter(prefix="/favorites", tags=["Favorites"])  # ✅ patched
 
 
 @router.get(

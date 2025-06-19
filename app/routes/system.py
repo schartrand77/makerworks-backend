@@ -1,30 +1,48 @@
 import os
-import time
 import platform
 import socket
-import psutil
+import logging
 from datetime import datetime
-from fastapi import APIRouter, Depends
-from app.database import check_db_connection, async_session
-from app.dependencies import get_current_user
-from app.schemas import TokenData  # ✅ only if you're using TokenData
 
-router = APIRouter(prefix="/system", tags=["System"])
+import psutil
+from fastapi import APIRouter
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
-START_TIME = time.time()
+from app.database import async_session
+from app.schemas.system import SystemStatus
+from app.utils.system_info import get_uptime, START_TIME  # assumes these exist
 
-@router.get("/status", summary="System status check")
-async def get_status(user: TokenData = Depends(get_current_user)):
-    db_ok = await check_db_connection(async_session)
-    return {
-        "status": "ok",
-        "db_connected": db_ok,
-        "uptime_seconds": round(time.time() - START_TIME, 2),
-        "host": socket.gethostname(),
-        "timestamp": datetime.utcnow().isoformat(),
-    }
+logger = logging.getLogger(__name__)
 
-@router.get("/version", summary="API version info")
+router = APIRouter(tags=["System"])
+
+
+@router.get("/status", response_model=SystemStatus, summary="System status and DB check")
+async def system_status():
+    db_ok: bool = False
+
+    try:
+        async with async_session() as session:
+            await session.execute(text("SELECT 1"))
+            db_ok = True
+    except SQLAlchemyError:
+        logger.exception("Database connection failed")
+
+    try:
+        return SystemStatus(
+            status="ok",
+            db_connected=db_ok,
+            uptime_seconds=get_uptime(),
+            host=socket.gethostname(),
+            timestamp=datetime.utcnow().isoformat()
+        )
+    except Exception:
+        logger.exception("Failed to construct system status response")
+        raise
+
+
+@router.get("/version", summary="API version and environment info")
 async def get_version():
     return {
         "version": os.getenv("API_VERSION", "dev"),
@@ -32,7 +50,8 @@ async def get_version():
         "platform": platform.system(),
     }
 
-@router.get("/env", summary="Server environment snapshot (non-sensitive)")
+
+@router.get("/env", summary="Non-sensitive environment metadata")
 async def get_env():
     return {
         "api_env": os.getenv("ENV", "development"),
@@ -43,6 +62,7 @@ async def get_env():
         "mem_gb": round(psutil.virtual_memory().total / 1024**3, 2),
     }
 
-@router.get("/ping", summary="Simple healthcheck")
+
+@router.get("/ping", summary="Basic healthcheck")
 async def ping():
     return {"ping": "pong"}

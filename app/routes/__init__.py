@@ -10,6 +10,7 @@ from .estimate import router as estimate_router
 from .admin import router as admin_router
 from .upload import router as upload_router
 from .checkout import router as checkout_router
+from .models import router as models_router
 
 # Centralized router instance
 router = APIRouter()
@@ -24,3 +25,4 @@ router.include_router(estimate_router, prefix="/estimate", tags=["estimate"])
 router.include_router(admin_router, prefix="/admin", tags=["admin"])
 router.include_router(upload_router, prefix="/upload", tags=["upload"])
 router.include_router(checkout_router, prefix="/checkout", tags=["checkout"])
+router.include_router(models_router, prefix="/models", tags=["models"])  # ✅ required

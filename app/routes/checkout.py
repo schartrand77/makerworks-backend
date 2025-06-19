@@ -6,13 +6,13 @@ import stripe
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
-from app.schemas.token import TokenData 
+from app.schemas.token import TokenData
 
 from app.dependencies import get_current_user
 from app.database import get_db
 from app.models import User
 
-router = APIRouter(prefix="/api/v1/checkout", tags=["Checkout"])
+router = APIRouter(prefix="/checkout", tags=["Checkout"])  # ✅ patched prefix
 
 # Load secrets
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")

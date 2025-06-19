@@ -1,11 +1,12 @@
 # app/config.py
 
+from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     # Uploads
-    UPLOAD_DIR: str = "/app/uploads"
+    UPLOAD_DIR: str = str(Path(__file__).resolve().parent.parent / "app/uploads")
 
     # JWT / Auth
     JWT_SECRET_KEY: str
@@ -39,3 +40,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Ensure upload directory exists to avoid crash during app.mount()
+Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)

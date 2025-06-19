@@ -92,8 +92,14 @@ async def signup(
             print("[auth] Email or username already in use")
             raise HTTPException(status_code=400, detail="Email or username already in use")
 
+        # ✅ Check if this is the first user
+        count_result = await db.execute(select(User))
+        all_users = count_result.scalars().all()
+        is_first_user = len(all_users) == 0
+        role = "admin" if is_first_user else "user"
+
         hashed_pw = hash_password(password)
-        user = User(email=email, username=username, hashed_password=hashed_pw)
+        user = User(email=email, username=username, hashed_password=hashed_pw, role=role)
 
         if image:
             try:
@@ -107,7 +113,7 @@ async def signup(
         await db.commit()
         await db.refresh(user)
 
-        print("[auth] Signup successful, generating token for:", user.email)
+        print(f"[auth] Signup successful — Role: {user.role} — Email: {user.email}")
         return generate_auth_response(user)
 
     except HTTPException:
