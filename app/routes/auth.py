@@ -1,44 +1,47 @@
 # app/routes/auth.py
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import (
+    APIRouter, HTTPException, Depends, status,
+    UploadFile, File, Form, Request, Query
+)
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import or_
+from datetime import datetime
 
+from app.dependencies import get_current_user
 from app.database import get_db
 from app.models import User
 from app.schemas import (
     UserLogin,
-    UserCreate,
     PasswordUpdate,
     EmailUpdate,
-    RoleUpdate,)
-from app.utils.auth import (
-    verify_password,
-    hash_password,
-    create_access_token,
-    decode_token,)
-from datetime import datetime
+    RoleUpdate,
+    TokenResponse,
+    UserOut,
+)
+from app.utils.auth.tokens import decode_token, create_access_token
+from app.utils.auth.crypto import hash_password, verify_password
+from app.services.auth_service import generate_auth_response
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(tags=["Auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/signin")
 
 
 # ----------- Auth Dependency -----------
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
+async def get_current_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
     try:
         payload = decode_token(token)
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
-        stmt = select(User).where(User.id == user_id)
-        result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
+        async with get_db() as db:
+            stmt = select(User).where(User.id == int(user_id))
+            result = await db.execute(stmt)
+            user = result.scalar_one_or_none()
 
         if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
@@ -48,14 +51,107 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
-# ----------- Authenticated Routes -----------
+# ----------- Public Auth Routes -----------
 
-@router.get("/me", summary="Get current user info", status_code=status.HTTP_200_OK)
+@router.get("/email-available", summary="Check if an email is available")
+async def check_email_available(
+    email: str = Query(..., description="Email address to check"),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    return {"available": user is None}
+
+
+@router.get("/username-available", summary="Check if a username is available")
+async def check_username_available(
+    username: str = Query(..., description="Username to check"),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.username == username))
+    user = result.scalar_one_or_none()
+    return {"available": user is None}
+
+
+@router.post("/signup", response_model=TokenResponse)
+async def signup(
+    email: str = Form(...),
+    password: str = Form(...),
+    username: str = Form(...),
+    image: UploadFile = File(None),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        print("[auth] Signup attempt — Email:", email, "| Username:", username)
+
+        result = await db.execute(
+            select(User).where(or_(User.email == email, User.username == username))
+        )
+        existing_user = result.scalar_one_or_none()
+        if existing_user:
+            print("[auth] Email or username already in use")
+            raise HTTPException(status_code=400, detail="Email or username already in use")
+
+        hashed_pw = hash_password(password)
+        user = User(email=email, username=username, hashed_password=hashed_pw)
+
+        if image:
+            try:
+                contents = await image.read()
+                user.profile_image = contents
+                print(f"[auth] Uploaded profile image: {len(contents)} bytes")
+            except Exception as e:
+                print(f"[auth] Failed to read image: {e}")
+
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+        print("[auth] Signup successful, generating token for:", user.email)
+        return generate_auth_response(user)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("[auth] Exception during signup:", repr(e))
+        raise HTTPException(status_code=400, detail="Signup failed")
+
+
+@router.post("/signin", response_model=TokenResponse)
+async def signin(data: UserLogin, db: AsyncSession = Depends(get_db)):
+    try:
+        print("[auth] Signin attempt — Email:", data.email)
+
+        result = await db.execute(select(User).where(User.email == data.email))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            print("[auth] No user found for email:", data.email)
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        if not verify_password(data.password, user.hashed_password):
+            print("[auth] Password verification failed for:", data.email)
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        print("[auth] Login successful — ID:", user.id, "| Email:", user.email)
+
+        token_response = generate_auth_response(user)
+        print("[auth] Token generated (truncated):", token_response.access_token[:30], "...")
+        return token_response
+
+    except Exception as e:
+        print("[auth] Exception during signin:", repr(e))
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+# ----------- Authenticated User Routes -----------
+
+@router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
-    return {"id": str(user.id), "email": user.email}
+    return UserOut.from_orm(user)
 
 
-@router.patch("/password", summary="Update user password", status_code=status.HTTP_200_OK)
+@router.patch("/password", summary="Update user password")
 async def update_password(
     data: PasswordUpdate,
     user: User = Depends(get_current_user),
@@ -67,11 +163,10 @@ async def update_password(
     user.hashed_password = hash_password(data.new_password)
     await db.commit()
     await db.refresh(user)
-
     return {"detail": "Password updated successfully"}
 
 
-@router.patch("/email", summary="Update user email", status_code=status.HTTP_200_OK)
+@router.patch("/email", summary="Update user email")
 async def update_email(
     data: EmailUpdate,
     user: User = Depends(get_current_user),
@@ -80,11 +175,10 @@ async def update_email(
     user.email = data.new_email
     await db.commit()
     await db.refresh(user)
-
     return {"detail": "Email updated successfully"}
 
 
-@router.delete("/delete", summary="Delete user account", status_code=status.HTTP_200_OK)
+@router.delete("/delete", summary="Delete user account")
 async def delete_account(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -94,7 +188,9 @@ async def delete_account(
     return {"detail": "Account deleted successfully"}
 
 
-@router.patch("/role", summary="Update a user's role (admin only)", status_code=status.HTTP_200_OK)
+# ----------- Admin-Only Routes -----------
+
+@router.patch("/role", summary="Update a user's role (admin only)")
 async def update_user_role(
     data: RoleUpdate,
     db: AsyncSession = Depends(get_db),
@@ -113,39 +209,4 @@ async def update_user_role(
     user.role = data.role
     await db.commit()
     await db.refresh(user)
-
     return {"detail": f"Updated user {user.id} to role '{user.role}'"}
-
-
-# ----------- Public Auth Routes -----------
-
-
-@router.post("/signin", summary="Authenticate user and return JWT", status_code=status.HTTP_200_OK)
-async def signin(data: UserLogin, db: AsyncSession = Depends(get_db)):
-    stmt = select(User).where(User.email == data.email)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-
-    if not user or not verify_password(data.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    # ✅ Track login time
-    user.last_login = datetime.utcnow()
-    await db.commit()
-    await db.refresh(user)
-
-    token = create_access_token({"sub": str(user.id)})
-    return {"access_token": token, "token_type": "bearer"}
-
-
-@router.post("/signin", summary="Authenticate user and return JWT", status_code=status.HTTP_200_OK)
-async def signin(data: UserLogin, db: AsyncSession = Depends(get_db)):
-    stmt = select(User).where(User.email == data.email)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-
-    if not user or not verify_password(data.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    token = create_access_token({"sub": str(user.id)})
-    return {"access_token": token, "token_type": "bearer"}

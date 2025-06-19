@@ -122,3 +122,8 @@ class EstimateSettings(Base):
 
     def __repr__(self):
         return "<EstimateSettings>"
+
+# ========================
+# ✅ Legacy-compatible alias
+# ========================
+Model3D = ModelMetadata

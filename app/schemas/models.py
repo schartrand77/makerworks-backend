@@ -1,6 +1,36 @@
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, List, Dict, Literal
 from datetime import datetime
+from fastapi import Form
+
+
+class ModelUploadRequest(BaseModel):
+    title: str = Field(..., example="Articulated Dragon")
+    description: Optional[str] = Field(None, example="A flexible 3D printed dragon with joints.")
+    filament_type: Optional[str] = Field(None, example="PLA MATTE")
+    geometry_hash: Optional[str] = Field(None, example="abc123xyz")
+
+    @classmethod
+    def as_form(
+        cls,
+        title: str = Form(...),
+        description: Optional[str] = Form(None),
+        filament_type: Optional[str] = Form(None),
+        geometry_hash: Optional[str] = Form(None),
+    ) -> "ModelUploadRequest":
+        return cls(
+            title=title,
+            description=description,
+            filament_type=filament_type,
+            geometry_hash=geometry_hash,
+        )
+
+
+class ModelUploadResponse(BaseModel):
+    id: str
+    name: str
+    url: str
+    uploaded_at: datetime
 
 
 class ModelOut(BaseModel):

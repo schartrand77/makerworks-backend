@@ -14,3 +14,8 @@ httpx
 python-jose[cryptography]
 passlib[bcrypt]
 stripe
+psutil>=5.9.8
+orjson               
+loguru                
+python-decouple 
+pydantic-settings>=2.0

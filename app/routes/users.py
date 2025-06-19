@@ -36,4 +36,4 @@ def admin_list_users(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 
     users = db.query(models.User).order_by(models.User.created_at.desc()).all()
-    return [schemas.PublicUserOut.from_orm(u) for u in users]()
+    return [schemas.PublicUserOut.from_orm(u) for u in users]

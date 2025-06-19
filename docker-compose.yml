@@ -4,8 +4,11 @@ networks:
   makerworks-net:
     external: true
 
+volumes:
+  pgdata:
+
 services:
-    backend:
+  backend:
     container_name: makerworks-backend
     build: .
     volumes:
@@ -14,8 +17,8 @@ services:
       - .env
     networks:
       - makerworks-net
-    ports:
-      - "49152:8000"
+    expose:
+      - "8000"
     depends_on:
       - db
       - redis
@@ -38,5 +41,16 @@ services:
     networks:
       - makerworks-net
 
-volumes:
-  pgdata:
+  nginx:
+    image: nginx:1.28-alpine
+    container_name: makerworks-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./uploads:/app/uploads:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro  # Optional: static frontend build
+    depends_on:
+      - backend
+    networks:
+      - makerworks-net

@@ -2,7 +2,6 @@ from typing import Optional, Literal
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, constr
 from datetime import datetime
 
-
 # --------- Core User Schemas ---------
 
 class UserBase(BaseModel):
@@ -17,6 +16,15 @@ class UserCreate(UserBase):
     password: constr(min_length=8) = Field(..., example="strongpassword123")
 
 
+class UserRegister(BaseModel):
+    email: EmailStr
+    username: constr(min_length=3, max_length=32)
+    password: constr(min_length=8)
+
+    class Config:
+        from_attributes = True
+
+
 class UserLogin(BaseModel):
     email: EmailStr = Field(..., example="user@example.com")
     password: constr(min_length=8) = Field(..., example="strongpassword123")
@@ -25,26 +33,7 @@ class UserLogin(BaseModel):
         from_attributes = True
 
 
-class AvatarUpdate(BaseModel):
-    avatar_url: Optional[HttpUrl] = Field(
-        default=None,
-        example="https://cdn.makerworks.io/avatars/user123.jpg",
-        description="Direct URL to the new avatar"
-    )
-    base64_image: Optional[str] = Field(
-        default=None,
-        description="Base64-encoded image as fallback"
-    )
-
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
-            "example": {
-                "avatar_url": "https://cdn.makerworks.io/avatars/user123.jpg",
-                "base64_image": None
-            }
-        }
-
+# --------- Output Schemas ---------
 
 class UserOut(UserBase):
     id: int = Field(..., example=123)
@@ -104,6 +93,29 @@ class RoleUpdate(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --------- Utility Schemas ---------
+
+class AvatarUpdate(BaseModel):
+    avatar_url: Optional[HttpUrl] = Field(
+        default=None,
+        example="https://cdn.makerworks.io/avatars/user123.jpg",
+        description="Direct URL to the new avatar"
+    )
+    base64_image: Optional[str] = Field(
+        default=None,
+        description="Base64-encoded image as fallback"
+    )
+
+    class Config:
+        from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "avatar_url": "https://cdn.makerworks.io/avatars/user123.jpg",
+                "base64_image": None
+            }
+        }
 
 
 class UsernameAvailability(BaseModel):

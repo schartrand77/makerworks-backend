@@ -1,2 +1,7 @@
-black==25.1.0 
-ruff==3.13.3
+black
+ruff
+isort
+pytest
+pytest-asyncio
+coverage
+mypy

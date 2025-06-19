@@ -6,8 +6,9 @@ from sqlalchemy.future import select
 
 from app.database import get_db
 from app.models import ModelMetadata
-from app.schemas import ModelOut
-from app.utils.auth import get_current_user, TokenData
+from app.schemas.models import ModelOut
+from app.schemas.token import TokenData
+from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/v1/models", tags=["Models"])
 
@@ -32,7 +33,7 @@ async def list_models(
 
     return {
         "models": [
-            ModelOut.from_orm(m).serialize(role=user.role)
+            ModelOut.model_validate(m).serialize(role=user.role)
             for m in models
         ]
     }
@@ -61,7 +62,7 @@ async def get_duplicates(
 
     return {
         "duplicates": [
-            ModelOut.from_orm(m).serialize(role="admin")
+            ModelOut.model_validate(m).serialize(role="admin")
             for m in models
         ]
     }
@@ -88,7 +89,7 @@ async def delete_model(
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    if str(user.sub) != model.uploader and user.role != "admin":
+    if str(user.sub) != str(model.uploader) and user.role != "admin":
         raise HTTPException(status_code=403, detail="Not authorized to delete this model")
 
     await db.delete(model)

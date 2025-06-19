@@ -17,3 +17,14 @@ async_session = sessionmaker(
 async def get_db():
     async with async_session() as session:
         yield session
+        
+        
+from sqlalchemy.exc import SQLAlchemyError
+
+async def check_db_connection(session_factory) -> bool:
+    try:
+        async with session_factory() as session:
+            await session.execute("SELECT 1")
+        return True
+    except SQLAlchemyError:
+        return False

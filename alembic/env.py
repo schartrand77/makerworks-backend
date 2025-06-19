@@ -9,6 +9,7 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from dotenv import load_dotenv
 from app.models import Base
+from app.models.user import Base as UserBase
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,6 +33,8 @@ if config.config_file_name is not None:
 
 # Use your metadata object for autogenerate support
 target_metadata = Base.metadata
+
+target_metadata = UserBase.metadata
 
 
 def run_migrations_offline() -> None:
