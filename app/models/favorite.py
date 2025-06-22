@@ -3,7 +3,7 @@
 from sqlalchemy import Column, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from app.models import Base
+from app.database import Base
 
 class Favorite(Base):
     __tablename__ = "favorites"

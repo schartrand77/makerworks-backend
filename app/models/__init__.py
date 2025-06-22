@@ -1,10 +1,22 @@
-from sqlalchemy.ext.declarative import declarative_base
+# app/models/__init__.py
 
-Base = declarative_base()
+from app.database import Base
 
-# Re-export all models here
-from .user import User
-from .model3d import Model3D
-from .model_metadata import ModelMetadata
-from .filament import Filament
-from .favorite import Favorite  # ✅ Add this
+# Import all models here to register them with SQLAlchemy metadata
+from app.models.user import User
+from app.models.model3d import Model3D
+from app.models.model_metadata import ModelMetadata
+from app.models.favorite import Favorite
+from app.models.filament import Filament
+from app.models.audit_log import AuditLog
+#from app.models.upload import Upload  # ✅ if this model exists
+
+__all__ = [
+    "User",
+    "Model3D",
+    "ModelMetadata",
+    "Favorite",
+    "Filament",
+    "AuditLog",
+    #"Upload",  # ✅ included if defined
+]

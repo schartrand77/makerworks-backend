@@ -1,6 +1,7 @@
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, constr
 from datetime import datetime
+from enum import Enum
 
 # --------- Core User Schemas ---------
 
@@ -14,6 +15,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: constr(min_length=8) = Field(..., example="strongpassword123")
+    avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/user123.jpg")
 
 
 class UserRegister(BaseModel):
@@ -26,8 +28,8 @@ class UserRegister(BaseModel):
 
 
 class UserLogin(BaseModel):
-    email: EmailStr = Field(..., example="user@example.com")
-    password: constr(min_length=8) = Field(..., example="strongpassword123")
+    email: EmailStr
+    password: str
 
     class Config:
         from_attributes = True
@@ -67,6 +69,7 @@ class UserUpdate(BaseModel):
     bio: Optional[constr(max_length=140)] = None
     language: Optional[Literal['en', 'fr', 'es', 'de', 'zh', 'ja']] = None
     theme: Optional[Literal["light", "dark", "system"]] = Field(None, example="dark")
+    avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/user456.jpg")
 
     class Config:
         from_attributes = True
@@ -120,6 +123,27 @@ class AvatarUpdate(BaseModel):
 
 class UsernameAvailability(BaseModel):
     available: bool = Field(..., example=True)
+
+    class Config:
+        from_attributes = True
+
+
+# --------- Admin Utility Schemas ---------
+
+class UserAdminAction(str, Enum):
+    promote = "promote"
+    demote = "demote"
+    delete = "delete"
+    reset_password = "reset_password"
+    view_uploads = "view_uploads"
+
+
+class UserActionLog(BaseModel):
+    id: int
+    admin_id: int
+    target_user_id: int
+    action: UserAdminAction
+    timestamp: datetime
 
     class Config:
         from_attributes = True

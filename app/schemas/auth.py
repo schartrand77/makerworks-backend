@@ -1,27 +1,46 @@
-# schemas/auth.py
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
+from datetime import datetime
 
-from pydantic import BaseModel
-from app.schemas.users import UserOut  # ✅ FIXED
 
+# ────────────────────────────────────────────────────────────────────────────────
+# Sign In Request Schema
+# ────────────────────────────────────────────────────────────────────────────────
+class SignInRequest(BaseModel):
+    email: EmailStr = Field(..., example="user@example.com")
+    password: str = Field(..., min_length=6, example="strongpassword123")
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Token Response Schema
+# ────────────────────────────────────────────────────────────────────────────────
 class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-    user: UserOut
+    access_token: str = Field(..., example="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+    token_type: str = Field(default="bearer", example="bearer")
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
-            "example": {
-                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                "token_type": "bearer",
-                "user": {
-                    "id": 1,
-                    "email": "user@example.com",
-                    "username": "user123",
-                    "created_at": "2025-06-16T12:34:56Z",
-                    "last_login": "2025-06-16T13:45:00Z",
-                    "is_verified": True,
-                    "role": "user"
-                }
-            }
-        }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# JWT Token Payload Schema (internal use)
+# ────────────────────────────────────────────────────────────────────────────────
+class TokenPayload(BaseModel):
+    sub: str                        # User ID as string
+    email: EmailStr
+    role: str                       # "user" | "admin"
+    exp: int                        # Expiration time (UNIX epoch)
+    iat: int                        # Issued at time (UNIX epoch)
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Optional: Refresh Token / Reset Flow (future-proofing)
+# ────────────────────────────────────────────────────────────────────────────────
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str

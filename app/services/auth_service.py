@@ -1,114 +1,105 @@
-# app/services/auth_service.py
-
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
-from fastapi import HTTPException, status
+from typing import Optional
+from jose import JWTError, jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from passlib.context import CryptContext
 
-from app.models import User
+from app.database import get_db
+from app.models import User, AuditLog
 from app.config import settings
-from app.schemas.auth import TokenResponse, UserOut  # ✅ added schema imports
 
-# Raise 401 when token is invalid or missing
+# ────────────────────────────────────────────────────────────────────────────────
+# AUTH CONSTANTS
+# ────────────────────────────────────────────────────────────────────────────────
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/signin")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 credentials_exception = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
-    detail="Invalid token or credentials",
+    detail="Could not validate credentials",
+    headers={"WWW-Authenticate": "Bearer"},
 )
 
+# ────────────────────────────────────────────────────────────────────────────────
+# PASSWORD HASHING
+# ────────────────────────────────────────────────────────────────────────────────
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    """
-    Create a JWT token with optional expiry.
-    """
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+# ────────────────────────────────────────────────────────────────────────────────
+# JWT CREATION
+# ────────────────────────────────────────────────────────────────────────────────
+
+def create_access_token(
+    data: dict,
+    expires_delta: Optional[timedelta] = timedelta(minutes=60)
+) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=30))
+    expire = datetime.utcnow() + expires_delta
     to_encode.update({
         "exp": expire,
-        "iat": datetime.utcnow(),
+        "iat": datetime.utcnow()
     })
+    token = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+    return token
 
-    print("[auth_service] Creating access token with payload:")
-    for k, v in to_encode.items():
-        print(f"  - {k}: {v}")
+# ────────────────────────────────────────────────────────────────────────────────
+# JWT VERIFICATION
+# ────────────────────────────────────────────────────────────────────────────────
 
+def verify_token(token: str) -> dict:
     try:
-        encoded_jwt = jwt.encode(
-            to_encode,
-            settings.JWT_SECRET_KEY,
-            algorithm=settings.ALGORITHM
-        )
-        print("[auth_service] JWT successfully encoded. Length:", len(encoded_jwt))
-        return encoded_jwt
-    except Exception as e:
-        print("[auth_service] Error during token encoding:", str(e))
-        raise
-
-
-def verify_access_token(token: str) -> dict:
-    """
-    Decode and validate a JWT token.
-    """
-    print("[auth_service] Verifying access token...")
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
-        print("[auth_service] Token payload:", payload)
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         return payload
-    except JWTError as e:
-        print("[auth_service] JWTError during verification:", str(e))
+    except JWTError:
         raise credentials_exception
 
+# Optional alias for compatibility
+decode_access_token = verify_token
 
-def verify_token(token: str) -> str:
-    """
-    Verify token and extract user ID.
-    """
-    print("[auth_service] Verifying token for user_id...")
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
-        user_id = payload.get("sub")
-        if not user_id or not isinstance(user_id, str):
-            print("[auth_service] Invalid or missing user_id in token")
-            raise credentials_exception
-        print("[auth_service] Extracted user_id:", user_id)
-        return user_id
-    except JWTError as e:
-        print("[auth_service] JWTError during user_id extraction:", str(e))
+# ────────────────────────────────────────────────────────────────────────────────
+# GET CURRENT USER DEPENDENCY
+# ────────────────────────────────────────────────────────────────────────────────
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    payload = verify_token(token)
+    user_id: str = payload.get("sub")
+
+    if not user_id:
         raise credentials_exception
 
+    result = await db.execute(select(User).where(User.id == int(user_id)))
+    user = result.scalar_one_or_none()
 
-def create_token_for_user(user: User) -> str:
-    """
-    Generate a raw JWT string for a user instance.
-    """
-    print("[auth_service] Creating token for user:", user.id, user.email)
-    return create_access_token({"sub": str(user.id)})
+    if user is None:
+        raise credentials_exception
 
+    return user
 
-def generate_auth_response(user: User) -> TokenResponse:
-    """
-    Generate a full auth response including JWT and user info.
-    """
-    print("[auth_service] Generating auth response for user:")
-    print("  - ID:", user.id)
-    print("  - Email:", user.email)
-    print("  - Role:", user.role)
+# ────────────────────────────────────────────────────────────────────────────────
+# ADMIN AUDIT LOGGING
+# ────────────────────────────────────────────────────────────────────────────────
 
-    token = create_access_token({
-        "sub": str(user.id),
-        "email": user.email,
-        "role": user.role,
-    })
-
-    print("[auth_service] Access token generated, sending response.")
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        user=UserOut.from_orm(user)
+async def log_action(
+    admin_id: int,
+    action: str,
+    target_user_id: int,
+    db: AsyncSession
+):
+    print(f"[log_action] Admin {admin_id} performed '{action}' on user {target_user_id}")
+    entry = AuditLog(
+        admin_id=admin_id,
+        action=action,
+        target_user_id=target_user_id,
+        timestamp=datetime.utcnow()
     )
+    db.add(entry)
+    await db.commit()

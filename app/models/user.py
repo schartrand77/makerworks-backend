@@ -1,7 +1,10 @@
+# app/models/user.py
+
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
-from sqlalchemy.orm import relationship  # ✅ required for uploads = relationship(...)
+from sqlalchemy.orm import relationship
 from datetime import datetime
-from app.models import Base
+
+from app.database import Base
 
 class User(Base):
     __tablename__ = "users"
@@ -11,9 +14,10 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
 
-    uploads = relationship("Model3D", back_populates="uploader")  # ✅
+    # Corrected: reference to Model3D for uploads
+    uploads = relationship("Model3D", back_populates="uploader")
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_login = Column(DateTime, nullable=True)
     is_verified = Column(Boolean, default=False)
-    role = Column(String, default="user")  # "user" or "admin"
+    role = Column(String, default="user")

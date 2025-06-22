@@ -3,7 +3,8 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from app.models import Base
+from app.database import Base
+
 
 class Model3D(Base):
     __tablename__ = "models"
@@ -13,5 +14,5 @@ class Model3D(Base):
     uploader_id = Column(Integer, ForeignKey("users.id"))
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
-    model_metadata = relationship("ModelMetadata", back_populates="model", uselist=False)
     uploader = relationship("User", back_populates="uploads")
+    model_metadata = relationship("ModelMetadata", back_populates="model", uselist=False)

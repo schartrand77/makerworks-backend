@@ -1,7 +1,7 @@
 import os
 from celery import Celery
 
-CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://192.168.1.170:6379/1")
 
 celery_app = Celery(
     "makerworks",

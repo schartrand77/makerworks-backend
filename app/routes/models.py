@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.database import get_db
-from app.models import ModelMetadata
+from app.models.model_metadata import ModelMetadata
 from app.schemas.models import ModelOut
 from app.schemas.token import TokenData
 from app.dependencies import get_current_user

@@ -11,6 +11,7 @@ from .users import (
     EmailUpdate,
     RoleUpdate,
     UsernameAvailability,
+    UserAdminAction,
 )
 
 from .checkout import CheckoutRequest
@@ -29,7 +30,7 @@ from .filaments import (
 from .models import (
     ModelOut,
     ModelUploadRequest,
-    ModelUploadResponse,  # Optional: add if used
+    ModelUploadResponse,
 )
 
 from .system import (

@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models import User
 from app.schemas.checkout import CheckoutRequest
 from app.schemas.token import TokenData
+from app.services.auth_service import decode_access_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/signin")
 
@@ -69,12 +70,24 @@ async def get_current_user(user: User = Depends(get_current_user_from_token)) ->
     return user
 
 
-async def require_admin(user: User = Depends(get_current_user)) -> User:
+async def get_current_admin(user: User = Depends(get_current_user)) -> User:
     """
     Raise 403 if user is not admin.
     """
     if user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
+    return user
+
+
+async def admin_required(user: TokenData = Depends(get_current_user_token_data)) -> TokenData:
+    """
+    Enforces that the current user has an admin role using lightweight token decode.
+    """
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
     return user
 
 

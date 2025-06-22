@@ -1,28 +1,24 @@
-# syntax=docker/dockerfile:1.4
-
 FROM python:3.11-slim
 
+# Set working directory
 WORKDIR /app
 
-# Install build tools and PostgreSQL headers for psycopg2 and similar packages
-RUN apt-get update && \
-    apt-get install --no-install-recommends -y \
-        build-essential \
-        gcc \
-        libpq-dev \
-    && pip install --upgrade pip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Copy project files
+COPY . /app
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy .env (you can also bind-mount in docker-compose)
+COPY .env /app/.env
 
-# Expose internal app port
+# Set environment variables explicitly if needed
+ENV PYTHONUNBUFFERED=1
+ENV ENV=production
+
+# Expose port
 EXPOSE 8000
 
-# Run the FastAPI app via Uvicorn
+# Run app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

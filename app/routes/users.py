@@ -1,39 +1,40 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from app.models import User
 from app.database import get_db
-from app.routes.auth import get_current_user
-from app import models, schemas
+from app.schemas.users import UserOut
+from app.services.auth_service import get_current_user
+from app.schemas.auth import TokenPayload
 
-router = APIRouter(prefix="/api/users", tags=["Users"])
+router = APIRouter(prefix="/users", tags=["users"])
 
-@router.get("/me", response_model=schemas.UserOut)
-def get_user_profile(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return user
 
-@router.put("/me", response_model=schemas.UserOut)
-def update_user_profile(update: schemas.UserUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    for field, value in update.dict(exclude_unset=True).items():
-        setattr(user, field, value)
-    db.commit()
-    db.refresh(user)
-    return user
-
-@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    db.delete(user)
-    db.commit
-    
-@router.get(
-    "/admin/users",
-    summary="List all users (admin only)",
-    status_code=status.HTTP_200_OK,
-    response_model=list[schemas.PublicUserOut],)
-def admin_list_users(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+@router.get("/me", response_model=UserOut)
+async def get_me(
+    token: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    result = await db.execute(select(User).where(User.id == int(token.sub)))
+    user = result.scalar_one_or_none()
 
-    users = db.query(models.User).order_by(models.User.created_at.desc()).all()
-    return [schemas.PublicUserOut.from_orm(u) for u in users]
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user
+
+
+@router.get("/{user_id}", response_model=UserOut)
+async def get_user_by_id(user_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user
+
+
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
