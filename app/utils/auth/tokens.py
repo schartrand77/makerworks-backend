@@ -1,39 +1,36 @@
 # app/utils/auth/tokens.py
 
-from datetime import datetime, timedelta
 from jose import jwt, JWTError
-from fastapi import HTTPException, status
+from typing import Optional, Dict
+import requests
+from functools import lru_cache
 from app.config import settings
 
-credentials_exception = HTTPException(
-    status_code=status.HTTP_401_UNAUTHORIZED,
-    detail="Could not validate credentials",
-    headers={"WWW-Authenticate": "Bearer"},
-)
+JWKS_URL = f"{settings.authentik_url.rstrip('/')}/application/o/jwks/"
 
-
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=60))
-    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
-
-    return jwt.encode(
-        to_encode,
-        settings.JWT_SECRET_KEY,
-        algorithm=settings.ALGORITHM,
-    )
-
-
-def decode_access_token(token: str) -> dict:
+@lru_cache()
+def fetch_jwks() -> Dict:
     try:
+        res = requests.get(JWKS_URL)
+        return res.json()
+    except Exception:
+        return {}
+
+def verify_jwt(token: str) -> Optional[dict]:
+    """
+    Validates an Authentik JWT using public JWKS.
+    """
+    try:
+        jwks = fetch_jwks()
+        unverified_header = jwt.get_unverified_header(token)
+        key = next((k for k in jwks.get("keys", []) if k["kid"] == unverified_header["kid"]), None)
+        if not key:
+            return None
         return jwt.decode(
             token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.ALGORITHM],
+            key=key,
+            algorithms=["RS256"],
+            audience=settings.authentik_client_id,
         )
     except JWTError:
-        raise credentials_exception
-
-
-# Alias for compatibility with expected import
-decode_token = decode_access_token
+        return None

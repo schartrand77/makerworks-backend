@@ -6,10 +6,14 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from passlib.context import CryptContext
+from redis.asyncio import Redis
+import uuid
 
-from app.database import get_db
+from app.db.database import get_db
 from app.models import User, AuditLog
 from app.config import settings
+from app.services.redis_service import get_redis
+from app.services.token_blacklist import is_token_blacklisted
 
 # ────────────────────────────────────────────────────────────────────────────────
 # AUTH CONSTANTS
@@ -28,6 +32,9 @@ credentials_exception = HTTPException(
 # PASSWORD HASHING
 # ────────────────────────────────────────────────────────────────────────────────
 
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -36,31 +43,39 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ────────────────────────────────────────────────────────────────────────────────
 
 def create_access_token(
-    data: dict,
+    user: User,
     expires_delta: Optional[timedelta] = timedelta(minutes=60)
 ) -> str:
-    to_encode = data.copy()
     expire = datetime.utcnow() + expires_delta
-    to_encode.update({
-        "exp": expire,
-        "iat": datetime.utcnow()
-    })
-    token = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+    jti = str(uuid.uuid4())
+
+    payload = {
+        "sub": str(user.id),
+        "email": user.email,
+        "role": user.role,
+        "exp": int(expire.timestamp()),
+        "iat": int(datetime.utcnow().timestamp()),
+        "jti": jti,
+    }
+
+    token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
     return token
 
 # ────────────────────────────────────────────────────────────────────────────────
 # JWT VERIFICATION
 # ────────────────────────────────────────────────────────────────────────────────
 
-def verify_token(token: str) -> dict:
+async def verify_token(token: str, redis: Redis) -> dict:
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        jti = payload.get("jti")
+        if jti and await is_token_blacklisted(redis, jti):
+            raise HTTPException(status_code=401, detail="Token has been revoked")
         return payload
     except JWTError:
         raise credentials_exception
 
-# Optional alias for compatibility
-decode_access_token = verify_token
+decode_access_token = verify_token  # alias
 
 # ────────────────────────────────────────────────────────────────────────────────
 # GET CURRENT USER DEPENDENCY
@@ -68,9 +83,10 @@ decode_access_token = verify_token
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ) -> User:
-    payload = verify_token(token)
+    payload = await verify_token(token, redis)
     user_id: str = payload.get("sub")
 
     if not user_id:

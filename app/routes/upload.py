@@ -1,27 +1,44 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.database import get_db
+from app.db.database import get_db
 from app.models import Model3D, User
 from app.schemas.models import ModelUploadResponse
+from app.schemas.token import TokenPayload
+from app.services.auth_service import get_current_user
 from app.config import settings
 from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
-from fastapi import HTTPException
 import shutil
 import logging
 import os
 
 router = APIRouter()
 
-# Fallback-safe BASE_URL
+# ─────────────────────────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────────────────────────
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
-
-# ✅ Upload directories (patched to match snake_case config.py)
 AVATAR_DIR: Path = settings.avatar_dir
 MODEL_DIR: Path = settings.model_dir
 
+ALLOWED_MODEL_TYPES = [
+    "application/octet-stream",
+    "application/vnd.ms-pki.stl",
+    "model/stl",
+    "application/3mf",
+]
 
+ALLOWED_IMAGE_TYPES = [
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+]
+
+# ─────────────────────────────────────────────────────────────
+# Ensure upload directories exist
+# ─────────────────────────────────────────────────────────────
 def safe_mkdir(path):
     try:
         Path(path).mkdir(parents=True, exist_ok=True)
@@ -29,33 +46,23 @@ def safe_mkdir(path):
         print(f"[ERROR] Could not create directory {path}: {e}")
         raise HTTPException(status_code=500, detail=f"Upload directory error: {e}")
 
-# Ensure upload directories exist
 safe_mkdir(AVATAR_DIR)
 safe_mkdir(MODEL_DIR)
 
-ALLOWED_MODEL_TYPES = [
-    "application/octet-stream",
-    "application/vnd.ms-pki.stl",
-    "model/stl",
-    "application/3mf"
-]
-
-ALLOWED_IMAGE_TYPES = [
-    "image/png",
-    "image/jpeg",
-    "image/jpg",
-    "image/webp"
-]
-
+# ─────────────────────────────────────────────────────────────
+# POST /api/v1/upload
+# ─────────────────────────────────────────────────────────────
 @router.post("/", response_model=ModelUploadResponse)
 async def upload_model_or_avatar(
     file: UploadFile = File(...),
     type: str = Form(...),  # "model" or "avatar"
     name: str = Form(None),
     description: str = Form(""),
-    user_id: str = Form(...),
-    db: Session = Depends(get_db)
+    token: TokenPayload = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
+    user_id = token.sub
+
     if type not in ["model", "avatar"]:
         logging.warning(f"[WARN] Invalid upload type: {type}")
         raise HTTPException(status_code=400, detail="Invalid upload type. Must be 'model' or 'avatar'.")
@@ -67,6 +74,7 @@ async def upload_model_or_avatar(
     if not ext:
         raise HTTPException(status_code=400, detail="Missing file extension.")
 
+    # ─────────────── Upload Model ───────────────
     if type == "model":
         if file.content_type not in ALLOWED_MODEL_TYPES:
             raise HTTPException(status_code=400, detail="Unsupported 3D model file type")
@@ -84,7 +92,7 @@ async def upload_model_or_avatar(
 
         model = Model3D(
             id=model_id,
-            name=name,
+            name=name or file.filename,
             description=description,
             filename=file.filename,
             path=str(save_path),
@@ -101,9 +109,10 @@ async def upload_model_or_avatar(
             id=model.id,
             name=model.name,
             url=f"{BASE_URL}/uploads/stls/{model_id}{ext}",
-            uploaded_at=model.uploaded_at.isoformat()
+            uploaded_at=model.uploaded_at.isoformat(),
         )
 
+    # ─────────────── Upload Avatar ───────────────
     elif type == "avatar":
         if file.content_type not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(status_code=400, detail="Unsupported image type for avatar upload")
@@ -132,5 +141,5 @@ async def upload_model_or_avatar(
             id=avatar_id,
             name=file.filename,
             url=f"{BASE_URL}/uploads/avatars/{avatar_id}{ext}",
-            uploaded_at=datetime.utcnow().isoformat()
+            uploaded_at=datetime.utcnow().isoformat(),
         )

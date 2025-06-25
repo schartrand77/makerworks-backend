@@ -1,34 +1,55 @@
-from sqlalchemy.orm import Session
-from app.models import User
-from app.schemas import UserCreate
-from app.auth_service import hash_password
+# app/crud/users.py
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import update, delete
+from app.models.user import User
+from app.schemas.users import UserUpdate
+from datetime import datetime
 
 
-def get_user_by_id(db: Session, user_id: int) -> User | None:
-    return db.query(User).filter(User.id == user_id).first()
+async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
 
 
-def get_user_by_email(db: Session, email: str) -> User | None:
-    return db.query(User).filter(User.email == email).first()
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
 
 
-def create_user(db: Session, new_user: UserCreate) -> User:
-    hashed_pw = hash_password(new_user.password)
-    user = User(
-        username=new_user.username,
-        email=new_user.email,
-        hashed_password=hashed_pw,
-    )
+async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
+    result = await db.execute(select(User).where(User.username == username))
+    return result.scalar_one_or_none()
+
+
+async def create_local_user(db: AsyncSession, user_data: dict) -> User:
+    """Create a local DB mirror for an Authentik user."""
+    user = User(**user_data)
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
-def delete_user(db: Session, user_id: int) -> bool:
-    user = get_user_by_id(db, user_id)
-    if user:
-        db.delete(user)
-        db.commit()
-        return True
-    return False
+async def update_user_profile(db: AsyncSession, user_id: int, data: UserUpdate) -> User:
+    stmt = update(User).where(User.id == user_id).values(**data.dict(exclude_unset=True))
+    await db.execute(stmt)
+    await db.commit()
+    return await get_user_by_id(db, user_id)
+
+
+async def delete_user(db: AsyncSession, user_id: int) -> bool:
+    stmt = delete(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    await db.commit()
+    return result.rowcount > 0
+
+
+async def update_last_login(db: AsyncSession, user_id: int) -> None:
+    await db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(last_login=datetime.utcnow())
+    )
+    await db.commit()

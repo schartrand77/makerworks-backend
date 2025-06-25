@@ -1,72 +1,29 @@
 # app/dependencies.py
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from jose import JWTError, jwt
 import stripe
 
-from app.config import settings
-from app.database import get_db
-from app.models import User
+from app.db.database import get_db
+from app.models.user import User
 from app.schemas.checkout import CheckoutRequest
-from app.schemas.token import TokenData
-from app.services.auth_service import decode_access_token
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/signin")
+from app.config import settings
 
 
-def get_current_user_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
-    """
-    Decode JWT and return TokenData without hitting the database.
-    """
-    try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.ALGORITHM])
-        user_id: int = payload.get("sub")
-        email: str = payload.get("email")
-        role: str = payload.get("role", "user")
-        if user_id is None or email is None:
-            raise HTTPException(status_code=401, detail="Missing user ID or email in token")
-        return TokenData(id=user_id, email=email, role=role)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-
-async def get_current_user_from_token(
-    token: str = Depends(oauth2_scheme),
+async def get_current_user(
+    x_authentik_email: str = Header(..., alias="X-Authentik-Email"),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
-    Decode JWT and return full User object from database.
+    Retrieve the current user from the database using Authentik-provided email header.
     """
-    try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.ALGORITHM])
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload",
-            )
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        )
-
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+    result = await db.execute(select(User).where(User.email == x_authentik_email))
     user = result.scalar_one_or_none()
 
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    return user
-
-
-async def get_current_user(user: User = Depends(get_current_user_from_token)) -> User:
-    """
-    Extract current authenticated user using token and DB.
-    """
     return user
 
 
@@ -79,16 +36,11 @@ async def get_current_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-async def admin_required(user: TokenData = Depends(get_current_user_token_data)) -> TokenData:
+async def admin_required(user: User = Depends(get_current_user)) -> User:
     """
-    Enforces that the current user has an admin role using lightweight token decode.
+    Alias to get_current_admin for lightweight access control.
     """
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required",
-        )
-    return user
+    return await get_current_admin(user)
 
 
 async def create_checkout_session(

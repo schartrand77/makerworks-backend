@@ -1,3 +1,5 @@
+# app/routes/system.py
+
 import os
 import platform
 import socket
@@ -10,13 +12,15 @@ import asyncpg
 import pynvml
 import redis.asyncio as redis
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.utils.system_info import get_uptime, START_TIME
+from app.schemas.system import SystemStatus
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["System"])
+router = APIRouter(prefix="/system", tags=["System"])
 
 boot_messages = [
     "🧠 MakerWorks Backend online — thinking in polygons.",
@@ -50,12 +54,36 @@ boot_messages = [
     "🧮 Recalculating print destiny...",
 ]
 
+frontend_handshake_messages = [
+    "🔗 Frontend linked. Time to make some prints!",
+    "🧠 Frontend synced. All systems go.",
+    "🎛️ Control panel online. Ready to deploy.",
+    "🎨 UI handshake complete. Rendering vibes.",
+    "🛸 MakerWorks frontend docked successfully.",
+    "👾 Client uplink accepted. Let's create.",
+    "🚀 Hello from the stars, frontend.",
+    "🌐 Frontend handshake confirmed. Sync complete.",
+    "🤝 Signal received. Building dreams in polygons.",
+    "🔊 Broadcasting printer-core frequencies to UI.",
+    "🧃 UI loaded like cold filament on a summer day.",
+    "🦄 Frontend authenticated. Prepare for rainbow infill.",
+    "🖥️ Frontend said hi. Backend says: hi back.",
+    "🔒 Authentik handshake accepted. Welcome, commander.",
+    "🔑 Token validated. You may proceed to production.",
+    "📡 Identity lock from Authentik confirmed.",
+    "💼 Authentik confirms identity. Opening job queue.",
+    "🌟 Frontend handshake Authentikated™",
+    "🕶️ Hello, Mr. Anderson. Authentik handshake accepted.",
+    "📲 OAuth2 dance complete. The grid is yours."
+]
 
-@router.get("/status", summary="System diagnostics and boot info")
+@router.get("/status", summary="System diagnostics and boot info", response_model=SystemStatus)
 async def system_status():
-    # DB connectivity
+    # DB connectivity check
     try:
-        conn = await asyncpg.connect(settings.async_database_url)
+        import re
+        raw_dsn = re.sub(r'\+asyncpg', '', settings.async_database_url)
+        conn = await asyncpg.connect(raw_dsn)
         await conn.execute("SELECT 1")
         await conn.close()
         db_ok = True
@@ -63,7 +91,7 @@ async def system_status():
         db_ok = False
         logger.exception("Database connection failed")
 
-    # Redis connectivity
+    # Redis connectivity check
     try:
         r = redis.Redis.from_url(settings.redis_url)
         pong = await r.ping()
@@ -90,7 +118,7 @@ async def system_status():
         "db_connected": db_ok,
         "redis_connected": redis_ok,
         "uptime_seconds": get_uptime(),
-        "uptime_start": START_TIME.isoformat(),
+        "uptime_start": datetime.fromtimestamp(START_TIME).isoformat(),
         "timestamp": datetime.utcnow().isoformat(),
         "host": socket.gethostname(),
         "cpu_cores": psutil.cpu_count(logical=False),
@@ -102,7 +130,6 @@ async def system_status():
         "env": settings.env,
     }
 
-
 @router.get("/version", summary="API version and environment info")
 async def get_version():
     return {
@@ -110,7 +137,6 @@ async def get_version():
         "python_version": platform.python_version(),
         "platform": platform.system(),
     }
-
 
 @router.get("/env", summary="Non-sensitive environment metadata")
 async def get_env():
@@ -123,7 +149,26 @@ async def get_env():
         "mem_gb": round(psutil.virtual_memory().total / 1024**3, 2),
     }
 
-
 @router.get("/ping", summary="Basic healthcheck")
 async def ping():
     return {"ping": "pong"}
+
+# ─────────────────────────────────────────────────────────────
+# Authenticated frontend-backend handshake
+# ─────────────────────────────────────────────────────────────
+
+def get_current_user(request: Request):
+    if "Authorization" not in request.headers:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"username": "example-user"}
+    
+@router.post("/handshake", summary="Authenticated frontend-backend handshake (POST)")
+async def frontend_handshake(user=Depends(get_current_user)):
+    msg = random.choice(frontend_handshake_messages)
+    return JSONResponse({"status": "ok", "user": user["username"], "message": msg})
+
+@router.get("/handshake", summary="Authenticated frontend-backend handshake")
+async def handshake(user=Depends(get_current_user)):
+    msg = random.choice(frontend_handshake_messages)
+    # logger.info(f"[🤝] Frontend handshake → {user['username']} → {msg}")
+    return JSONResponse({"status": "ok", "user": user["username"], "message": msg})

@@ -1,24 +1,44 @@
-FROM python:3.11-slim
+# ────── Stage 1: Build ──────
+FROM python:3.11-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY . /app
+# Install build tools
+RUN apt-get update && apt-get install -y build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
+# Install Python deps early for caching
+COPY pyproject.toml poetry.lock ./
+RUN pip install poetry && poetry config virtualenvs.create false && poetry install --no-dev
 
-# Copy .env (you can also bind-mount in docker-compose)
-COPY .env /app/.env
+# ────── Stage 2: Runtime ──────
+FROM python:3.11-slim
 
-# Set environment variables explicitly if needed
-ENV PYTHONUNBUFFERED=1
-ENV ENV=production
+WORKDIR /app
 
-# Expose port
+# Copy code and installed site-packages from builder
+COPY --from=builder /app /app
+
+# Create runtime folders
+RUN mkdir -p /app/uploads /app/keys
+
+# Copy static frontend build
+COPY ./frontend/dist /usr/share/nginx/html
+
+# Copy NGINX config
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy private key (during dev; mount in prod)
+COPY ./keys/private.pem ./keys/public.pem /app/keys/
+
+# Install NGINX and runtime dependencies
+RUN apt-get update && apt-get install -y nginx curl && rm -rf /var/lib/apt/lists/*
+
+# Uvicorn will serve FastAPI backend
 EXPOSE 8000
+EXPOSE 80
 
-# Run app
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Copy entrypoint
+COPY ./start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]

@@ -6,7 +6,7 @@ from typing import List
 
 from app.schemas.filaments import FilamentCreate, FilamentUpdate, FilamentOut
 from app.models import Filament
-from app.database import get_db
+from app.db.database import get_db
 from app.dependencies import get_current_admin
 
 router = APIRouter(
@@ -14,6 +14,9 @@ router = APIRouter(
     tags=["Filaments"],
 )
 
+# ─────────────────────────────────────────────────────────────
+# GET /filaments/ — List all active filaments
+# ─────────────────────────────────────────────────────────────
 @router.get(
     "/",
     summary="List all active filaments",
@@ -24,7 +27,9 @@ router = APIRouter(
 def list_filaments(db: Session = Depends(get_db)):
     return db.query(Filament).filter(Filament.is_active == True).all()
 
-
+# ─────────────────────────────────────────────────────────────
+# POST /filaments/ — Create new filament (admin only)
+# ─────────────────────────────────────────────────────────────
 @router.post(
     "/",
     summary="Add a new filament (admin only)",
@@ -37,14 +42,15 @@ def add_filament(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    # Use by_alias=True to respect frontend field names like colorHex → color
     new_filament = Filament(**filament.dict(by_alias=True))
     db.add(new_filament)
     db.commit()
     db.refresh(new_filament)
     return new_filament
 
-
+# ─────────────────────────────────────────────────────────────
+# PUT /filaments/{fid} — Update filament by ID (admin only)
+# ─────────────────────────────────────────────────────────────
 @router.put(
     "/{fid}",
     summary="Update a filament (admin only)",
@@ -69,7 +75,9 @@ def update_filament(
     db.refresh(filament)
     return filament
 
-
+# ─────────────────────────────────────────────────────────────
+# DELETE /filaments/{fid} — Soft-delete filament by ID
+# ─────────────────────────────────────────────────────────────
 @router.delete(
     "/{fid}",
     summary="Soft-delete a filament (admin only)",
@@ -88,7 +96,9 @@ def delete_filament(
     db.commit()
     return {"deleted": True, "id": filament.id}
 
-
+# ─────────────────────────────────────────────────────────────
+# GET /filaments/picker — Return nested data for frontend fanout picker
+# ─────────────────────────────────────────────────────────────
 @router.get(
     "/picker",
     summary="Get filament picker data for frontend",

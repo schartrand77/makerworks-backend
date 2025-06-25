@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, List, Dict, Literal
 from datetime import datetime
-from fastapi import Form
 
 
 class ModelUploadRequest(BaseModel):
@@ -10,27 +9,12 @@ class ModelUploadRequest(BaseModel):
     filament_type: Optional[str] = Field(None, example="PLA MATTE")
     geometry_hash: Optional[str] = Field(None, example="abc123xyz")
 
-    @classmethod
-    def as_form(
-        cls,
-        title: str = Form(...),
-        description: Optional[str] = Form(None),
-        filament_type: Optional[str] = Form(None),
-        geometry_hash: Optional[str] = Form(None),
-    ) -> "ModelUploadRequest":
-        return cls(
-            title=title,
-            description=description,
-            filament_type=filament_type,
-            geometry_hash=geometry_hash,
-        )
-
 
 class ModelUploadResponse(BaseModel):
-    id: str
-    name: str
-    url: str
-    uploaded_at: datetime
+    id: str = Field(..., example="abc123xyz789")
+    name: str = Field(..., example="Articulated Dragon")
+    url: str = Field(..., example="https://cdn.makerworks.io/models/abc123xyz.stl")
+    uploaded_at: datetime = Field(..., example="2025-06-10T14:23:00Z")
 
 
 class ModelOut(BaseModel):
@@ -88,12 +72,3 @@ class ModelOut(BaseModel):
 
     class Config:
         from_attributes = True
-
-    def serialize(self, role: str = "user") -> dict:
-        """
-        Return a dict representation of the model based on user role.
-        Admins see all fields. Regular users get a filtered view.
-        """
-        if role == "admin":
-            return self.dict()
-        return self.dict(exclude={"face_count", "role"})

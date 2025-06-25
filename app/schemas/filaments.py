@@ -21,6 +21,9 @@ class FilamentCreate(BaseModel):
     is_active: Optional[bool] = True
     is_biodegradable: Optional[bool] = None
 
+    class Config:
+        populate_by_name = True
+
 
 class FilamentUpdate(BaseModel):
     name: Optional[str] = None
@@ -38,6 +41,9 @@ class FilamentUpdate(BaseModel):
 
     is_active: Optional[bool] = None
     is_biodegradable: Optional[bool] = None
+
+    class Config:
+        populate_by_name = True
 
 
 class FilamentOut(BaseModel):
@@ -60,4 +66,4 @@ class FilamentOut(BaseModel):
 
     class Config:
         from_attributes = True
-        populate_by_name = True  # Needed to map aliases on output and input
+        populate_by_name = True

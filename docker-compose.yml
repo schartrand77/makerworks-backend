@@ -10,18 +10,12 @@ services:
       - "8000:8000"
     volumes:
       - .:/app:delegated
-      - ./uploads:/data/uploads
+      - uploads_data:/data/uploads
+    env_file:
+      - .env
     environment:
-      - AVATAR_DIR=/data/uploads/avatars
-      - MODEL_DIR=/data/uploads/models
-      - UPLOAD_DIR=/data/uploads
-      - DATABASE_URL=postgresql://jellystat:jellystat@db:5432/makerworks2
-      - ASYNC_DATABASE_URL=postgresql+asyncpg://jellystat:jellystat@db:5432/makerworks2
-      - JWT_SECRET_KEY=supersecretkey
-      - STRIPE_SECRET_KEY=your-stripe-key
-      - STRIPE_WEBHOOK_SECRET=your-webhook-secret
-      - DOMAIN=http://localhost:8000
-      - REDIS_URL=redis://192.168.1.170:6379/1
+      - ENV=development
+    entrypoint: ["/app/docker-entrypoint.sh"]
     depends_on:
       - db
       - redis
@@ -29,12 +23,12 @@ services:
 
   db:
     image: postgres:15
-    restart: always
     container_name: makerworks-db
+    restart: always
     environment:
-      POSTGRES_USER: jellystat
-      POSTGRES_PASSWORD: jellystat
-      POSTGRES_DB: makerworks2
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:

@@ -1,38 +1,37 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
-from datetime import datetime
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List
 
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Sign In Request Schema
+# JWT Token Payload Schema (decoded from ID/access token)
 # ────────────────────────────────────────────────────────────────────────────────
-class SignInRequest(BaseModel):
-    email: EmailStr = Field(..., example="user@example.com")
-    password: str = Field(..., min_length=6, example="strongpassword123")
 
-
-# ────────────────────────────────────────────────────────────────────────────────
-# Token Response Schema
-# ────────────────────────────────────────────────────────────────────────────────
-class TokenResponse(BaseModel):
-    access_token: str = Field(..., example="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
-    token_type: str = Field(default="bearer", example="bearer")
-
-
-# ────────────────────────────────────────────────────────────────────────────────
-# JWT Token Payload Schema (internal use)
-# ────────────────────────────────────────────────────────────────────────────────
 class TokenPayload(BaseModel):
-    sub: str                        # User ID as string
+    sub: str                                # User ID (subject claim)
+    email: EmailStr                         # Primary email
+    exp: int                                # Expiration timestamp (UNIX epoch)
+    iat: int                                # Issued-at timestamp (UNIX epoch)
+    name: Optional[str] = None              # Full name (if provided)
+    preferred_username: Optional[str] = None  # Username used for display
+    groups: List[str] = []                  # Group memberships (e.g. ['admin'])
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# MakerWorks Authenticated User Info (returned by /auth/me)
+# ────────────────────────────────────────────────────────────────────────────────
+
+class AuthResponse(BaseModel):
+    id: int
     email: EmailStr
-    role: str                       # "user" | "admin"
-    exp: int                        # Expiration time (UNIX epoch)
-    iat: int                        # Issued at time (UNIX epoch)
+    username: str
+    role: str
+    is_verified: bool
 
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Optional: Refresh Token / Reset Flow (future-proofing)
+# Optional: Refresh Token / Password Reset Flow (future support)
 # ────────────────────────────────────────────────────────────────────────────────
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 

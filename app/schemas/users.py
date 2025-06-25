@@ -3,7 +3,9 @@ from pydantic import BaseModel, EmailStr, Field, HttpUrl, constr
 from datetime import datetime
 from enum import Enum
 
-# --------- Core User Schemas ---------
+# ─────────────────────────────────────────────────────────────
+# Core User Base Schema
+# ─────────────────────────────────────────────────────────────
 
 class UserBase(BaseModel):
     email: EmailStr = Field(..., example="user@example.com")
@@ -12,30 +14,9 @@ class UserBase(BaseModel):
     class Config:
         from_attributes = True
 
-
-class UserCreate(UserBase):
-    password: constr(min_length=8) = Field(..., example="strongpassword123")
-    avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/user123.jpg")
-
-
-class UserRegister(BaseModel):
-    email: EmailStr
-    username: constr(min_length=3, max_length=32)
-    password: constr(min_length=8)
-
-    class Config:
-        from_attributes = True
-
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-    class Config:
-        from_attributes = True
-
-
-# --------- Output Schemas ---------
+# ─────────────────────────────────────────────────────────────
+# Output Schemas
+# ─────────────────────────────────────────────────────────────
 
 class UserOut(UserBase):
     id: int = Field(..., example=123)
@@ -47,6 +28,7 @@ class UserOut(UserBase):
     avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/abc123.jpg")
     bio: Optional[constr(max_length=140)] = Field(None, example="Maker. Designer. Print wizard.")
     language: Optional[Literal['en', 'fr', 'es', 'de', 'zh', 'ja']] = Field(default="en")
+    theme: Optional[Literal["light", "dark", "system"]] = Field(default="system", example="dark")
 
     class Config:
         from_attributes = True
@@ -55,13 +37,16 @@ class UserOut(UserBase):
 class PublicUserOut(BaseModel):
     id: int = Field(..., example=123)
     username: str = Field(..., example="printmaster77")
+    avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/user123.jpg")
+    bio: Optional[str] = Field(None, example="I build printer mods.")
     created_at: datetime = Field(..., example="2024-01-15T12:00:00Z")
 
     class Config:
         from_attributes = True
 
-
-# --------- Update Schemas ---------
+# ─────────────────────────────────────────────────────────────
+# Update Schemas
+# ─────────────────────────────────────────────────────────────
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
@@ -82,14 +67,6 @@ class EmailUpdate(BaseModel):
         from_attributes = True
 
 
-class PasswordUpdate(BaseModel):
-    current_password: constr(min_length=8) = Field(..., example="oldpass123")
-    new_password: constr(min_length=8) = Field(..., example="newpass456")
-
-    class Config:
-        from_attributes = True
-
-
 class RoleUpdate(BaseModel):
     role: Literal['admin', 'user'] = Field(..., example="admin")
     user_id: int = Field(..., example=42)
@@ -97,8 +74,9 @@ class RoleUpdate(BaseModel):
     class Config:
         from_attributes = True
 
-
-# --------- Utility Schemas ---------
+# ─────────────────────────────────────────────────────────────
+# Utility Schemas
+# ─────────────────────────────────────────────────────────────
 
 class AvatarUpdate(BaseModel):
     avatar_url: Optional[HttpUrl] = Field(
@@ -127,8 +105,9 @@ class UsernameAvailability(BaseModel):
     class Config:
         from_attributes = True
 
-
-# --------- Admin Utility Schemas ---------
+# ─────────────────────────────────────────────────────────────
+# Admin Utility Schemas
+# ─────────────────────────────────────────────────────────────
 
 class UserAdminAction(str, Enum):
     promote = "promote"

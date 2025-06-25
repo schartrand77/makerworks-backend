@@ -1,4 +1,4 @@
-# app/utils/crypto.py
+# app/utils/auth/crypto.py
 
 from passlib.context import CryptContext
 

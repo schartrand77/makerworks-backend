@@ -1,15 +1,15 @@
 # app/models/__init__.py
 
-from app.database import Base
+from app.db import Base  # ← Use correct base import
 
-# Import all models here to register them with SQLAlchemy metadata
+# Register all models so SQLAlchemy metadata reflects them during migration
 from app.models.user import User
 from app.models.model3d import Model3D
 from app.models.model_metadata import ModelMetadata
 from app.models.favorite import Favorite
 from app.models.filament import Filament
 from app.models.audit_log import AuditLog
-#from app.models.upload import Upload  # ✅ if this model exists
+# from app.models.upload import Upload  # ❌ Commented out - model not defined yet
 
 __all__ = [
     "User",
@@ -18,5 +18,5 @@ __all__ = [
     "Favorite",
     "Filament",
     "AuditLog",
-    #"Upload",  # ✅ included if defined
+    # "Upload",  # ❌ Not active
 ]

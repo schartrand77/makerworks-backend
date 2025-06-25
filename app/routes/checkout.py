@@ -1,31 +1,36 @@
-# routes/checkout.py
+# app/routes/checkout.py
 
 import os
 import stripe
-
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
+
 from app.schemas.token import TokenData
-
 from app.dependencies import get_current_user
-from app.database import get_db
-from app.models import User
+from app.db.database import get_db
+from app.models import User  # Optional: may remove if not querying user directly
 
-router = APIRouter(prefix="/checkout", tags=["Checkout"])  # ✅ patched prefix
+router = APIRouter(prefix="/checkout", tags=["Checkout"])
 
-# Load secrets
+# Load environment secrets
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-DOMAIN = os.getenv("DOMAIN", "http://localhost:3000")  # Fallback for dev
+DOMAIN = os.getenv("DOMAIN", "http://localhost:5173")
 WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 
+# ─────────────────────────────────────────────────────────────
+# Pydantic Request Model
+# ─────────────────────────────────────────────────────────────
 class CheckoutRequest(BaseModel):
     model_id: int = Field(..., description="Uploaded model ID")
     estimate_id: int = Field(..., description="Associated estimate ID")
     total_cost: float = Field(..., description="Final total cost in USD")
 
 
+# ─────────────────────────────────────────────────────────────
+# Create Checkout Session
+# ─────────────────────────────────────────────────────────────
 @router.post(
     "/session",
     summary="Create a Stripe Checkout session",
@@ -45,7 +50,7 @@ def create_checkout_session(
                         "name": f"Model #{data.model_id}",
                         "description": f"Estimate ID: {data.estimate_id}",
                     },
-                    "unit_amount": int(data.total_cost * 100),  # cents
+                    "unit_amount": int(data.total_cost * 100),  # Stripe requires cents
                 },
                 "quantity": 1,
             }],
@@ -64,6 +69,9 @@ def create_checkout_session(
         raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
 
 
+# ─────────────────────────────────────────────────────────────
+# Stripe Webhook Handler
+# ─────────────────────────────────────────────────────────────
 @router.post(
     "/webhook",
     summary="Stripe webhook endpoint",
@@ -86,7 +94,7 @@ async def stripe_webhook(request: Request):
         metadata = session.get("metadata", {})
         print("✅ Payment complete:", metadata)
 
-        # TODO: Mark estimate/job as paid
-        # TODO: Create print queue task or job entry
+        # TODO: Mark estimate/job as paid in DB
+        # TODO: Enqueue Celery job to generate gcode/submit to printer
 
     return {"status": "success"}
