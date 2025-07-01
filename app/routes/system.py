@@ -12,12 +12,14 @@ import asyncpg
 import pynvml
 import redis.asyncio as redis
 
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from app.config import settings
+from app.config.settings import settings
 from app.utils.system_info import get_uptime, START_TIME
 from app.schemas.system import SystemStatus
+from app.dependencies.auth import get_user_from_headers
+from app.schemas.token import TokenData
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["System"])
@@ -74,12 +76,11 @@ frontend_handshake_messages = [
     "💼 Authentik confirms identity. Opening job queue.",
     "🌟 Frontend handshake Authentikated™",
     "🕶️ Hello, Mr. Anderson. Authentik handshake accepted.",
-    "📲 OAuth2 dance complete. The grid is yours."
+    "📲 OAuth2 dance complete. The grid is yours.",
 ]
 
 @router.get("/status", summary="System diagnostics and boot info", response_model=SystemStatus)
 async def system_status():
-    # DB connectivity check
     try:
         import re
         raw_dsn = re.sub(r'\+asyncpg', '', settings.async_database_url)
@@ -91,7 +92,6 @@ async def system_status():
         db_ok = False
         logger.exception("Database connection failed")
 
-    # Redis connectivity check
     try:
         r = redis.Redis.from_url(settings.redis_url)
         pong = await r.ping()
@@ -100,7 +100,6 @@ async def system_status():
         redis_ok = False
         logger.exception("Redis connection failed")
 
-    # GPU detection
     try:
         pynvml.nvmlInit()
         gpu_count = pynvml.nvmlDeviceGetCount()
@@ -130,6 +129,7 @@ async def system_status():
         "env": settings.env,
     }
 
+
 @router.get("/version", summary="API version and environment info")
 async def get_version():
     return {
@@ -137,6 +137,7 @@ async def get_version():
         "python_version": platform.python_version(),
         "platform": platform.system(),
     }
+
 
 @router.get("/env", summary="Non-sensitive environment metadata")
 async def get_env():
@@ -149,26 +150,35 @@ async def get_env():
         "mem_gb": round(psutil.virtual_memory().total / 1024**3, 2),
     }
 
+
 @router.get("/ping", summary="Basic healthcheck")
 async def ping():
     return {"ping": "pong"}
 
-# ─────────────────────────────────────────────────────────────
+
+# ───────────────────────────────────────────────
 # Authenticated frontend-backend handshake
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 
-def get_current_user(request: Request):
-    if "Authorization" not in request.headers:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return {"username": "example-user"}
-    
 @router.post("/handshake", summary="Authenticated frontend-backend handshake (POST)")
-async def frontend_handshake(user=Depends(get_current_user)):
-    msg = random.choice(frontend_handshake_messages)
-    return JSONResponse({"status": "ok", "user": user["username"], "message": msg})
+async def frontend_handshake(user: TokenData = Depends(get_user_from_headers)):
+    return JSONResponse(
+        {
+            "status": "ok",
+            "user": user.username,
+            "groups": user.groups,
+            "message": random.choice(frontend_handshake_messages),
+        }
+    )
 
-@router.get("/handshake", summary="Authenticated frontend-backend handshake")
-async def handshake(user=Depends(get_current_user)):
-    msg = random.choice(frontend_handshake_messages)
-    # logger.info(f"[🤝] Frontend handshake → {user['username']} → {msg}")
-    return JSONResponse({"status": "ok", "user": user["username"], "message": msg})
+
+@router.get("/handshake", summary="Authenticated frontend-backend handshake (GET)")
+async def handshake(user: TokenData = Depends(get_user_from_headers)):
+    return JSONResponse(
+        {
+            "status": "ok",
+            "user": user.username,
+            "groups": user.groups,
+            "message": random.choice(frontend_handshake_messages),
+        }
+    )

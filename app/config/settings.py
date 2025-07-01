@@ -1,79 +1,75 @@
-# settings.py — MakerWorks Backend
+# app/config/settings.py
 
-from pydantic import BaseSettings
 from functools import lru_cache
-from typing import List
-import os
-from dotenv import load_dotenv
-import logging
+from typing import List, Union
+from pydantic import Field, AnyHttpUrl, validator
+from pydantic_settings import BaseSettings
 
-logger = logging.getLogger("uvicorn")
-
-# Load environment variables from .env if available
-load_dotenv()
 
 class Settings(BaseSettings):
-    env: str = "development"
+    # Core
+    env: str = Field(default="production", alias="ENV")
+    domain: str = Field(..., alias="DOMAIN")
+    base_url: str = Field(..., alias="BASE_URL")
+    vite_api_base_url: str = Field(..., alias="VITE_API_BASE_URL")
 
-    # ──────────────── Database and Cache ────────────────
-    database_url: str = "postgresql+asyncpg://user:pass@localhost:5432/dbname"
-    redis_url: str = "redis://localhost:6379"
+    # Paths
+    upload_dir: str = Field(..., alias="UPLOAD_DIR")
+    model_dir: str = Field(..., alias="MODEL_DIR")
+    avatar_dir: str = Field(..., alias="AVATAR_DIR")
 
-    # ──────────────── Frontend Origins ────────────────
-    frontend_origins: List[str] = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://192.168.1.170:5173",
-        "http://192.168.1.191:5173",
-        "http://100.72.184.28:5173",
-        "https://makerworks.app"
-    ]
+    # Database
+    async_database_url: str = Field(..., alias="ASYNC_DATABASE_URL")
+    database_url: str = Field(..., alias="DATABASE_URL")
 
-    # ──────────────── Authentik OIDC (Public Cloudflare Tunnel) ────────────────
-    authentik_issuer: str = "https://auth.makerworks.app/application/o"
-    authentik_client_id: str = os.getenv("AUTHENTIK_CLIENT_ID", "")
-    authentik_client_secret: str = os.getenv("AUTHENTIK_CLIENT_SECRET", "")
-    authentik_audience: str = "makerworks"
-    authentik_url: str = "https://auth.makerworks.app"
+    # Redis + Celery
+    redis_url: str = Field("redis://localhost:6379", alias="REDIS_URL")
 
-    # ──────────────── JWT (RS256) Signing ────────────────
-    private_key_path: str = "keys/private.pem"
-    private_key_kid: str = "makerworks-key-1"
-    jwt_algorithm: str = "RS256"
-    auth_audience: str = "https://makerworks.app"
+    # JWT
+    jwt_secret: str = Field(..., alias="JWT_SECRET")
+    jwt_algorithm: str = Field("HS256", alias="JWT_ALGORITHM")
+    private_key_path: str = Field(default="./keys/private.pem", alias="PRIVATE_KEY_PATH")
+    private_key_kid: str = Field(default="makerworks-key", alias="PRIVATE_KEY_KID")
+    auth_audience: str = Field(default="makerworks", alias="AUTH_AUDIENCE")
 
-    # Preloaded private key (optional)
-    private_key: str = ""
+    # Stripe
+    stripe_secret_key: str = Field(..., alias="STRIPE_SECRET_KEY")
+    stripe_webhook_secret: str = Field(..., alias="STRIPE_WEBHOOK_SECRET")
 
-    # ──────────────── Computed Properties ────────────────
+    # Discord
+    discord_channel_id: str = Field(..., alias="DISCORD_CHANNEL_ID")
+    discord_bot_token: str = Field(..., alias="DISCORD_BOT_TOKEN")
+    discord_webhook_url: str = Field(..., alias="DISCORD_WEBHOOK_URL")
+
+    # Monitoring
+    metrics_api_key: str = Field(..., alias="METRICS_API_KEY")
+
+    # Authentik
+    authentik_url: str = Field(..., alias="AUTHENTIK_URL")
+    authentik_issuer: str = Field(..., alias="AUTHENTIK_ISSUER")
+    authentik_client_id: str = Field(..., alias="AUTHENTIK_CLIENT_ID")
+    authentik_client_secret: str = Field(..., alias="AUTHENTIK_CLIENT_SECRET")
+
+    # CORS
+    raw_cors_origins: Union[str, List[AnyHttpUrl]] = Field(default="", alias="CORS_ORIGINS")
+
     @property
     def cors_origins(self) -> List[str]:
-        return self.frontend_origins
+        if isinstance(self.raw_cors_origins, str):
+            return [origin.strip() for origin in self.raw_cors_origins.split(",") if origin.strip()]
+        return list(self.raw_cors_origins)
 
-    @property
-    def async_database_url(self) -> str:
-        return self.database_url.replace("postgresql+asyncpg://", "postgresql://")
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "forbid",
+    }
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
 
-        # Preload private key (only once)
-        try:
-            with open(self.private_key_path, "r") as f:
-                self.private_key = f.read()
-            logger.info(f"🔐 Loaded private key from {self.private_key_path}")
-        except Exception as e:
-            logger.warning(f"❌ Could not read private key: {e}")
-
-        logger.info(f"🔧 Loaded settings for env: {self.env}")
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-
-# ──────────────── Cached settings instance ────────────────
 @lru_cache()
 def get_settings():
     return Settings()
 
+
 settings = get_settings()
+print("[Debug] Effective CORS origins:", settings.cors_origins)

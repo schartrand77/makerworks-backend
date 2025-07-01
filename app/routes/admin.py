@@ -1,12 +1,14 @@
+# app/routes/admin.py
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import httpx
 import os
 
-from app.models import ModelMetadata
+from app.models.models import ModelMetadata # ✅ Resolved ambiguous import
 from app.db.database import get_db
-from app.dependencies.auth import admin_required  # ✅ Ensure proper path
+from app.dependencies.auth import admin_required
 from app.services.auth_service import log_action
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -14,12 +16,29 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 AUTHENTIK_API = os.getenv("AUTHENTIK_API_URL", "http://authentik:9000")
 AUTHENTIK_TOKEN = os.getenv("AUTHENTIK_API_TOKEN", "")
 
-# In-memory temporary config store (replace with Redis or DB later)
+# In-memory temporary config store
 discord_config = {
     "webhook_url": os.getenv("DISCORD_WEBHOOK_URL", ""),
     "channel_id": os.getenv("DISCORD_CHANNEL_ID", ""),
     "feed_enabled": True,
 }
+
+
+async def get_user_groups(user_id: str) -> list[str]:
+    """Fetch group names for a user from Authentik."""
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(
+                f"{AUTHENTIK_API}/api/v3/core/users/{user_id}/groups/",
+                headers={"Authorization": f"Bearer {AUTHENTIK_TOKEN}"}
+            )
+            res.raise_for_status()
+            groups = res.json()
+            return [g["name"] for g in groups]
+        except httpx.RequestError:
+            return ["error:authentik-unreachable"]
+        except httpx.HTTPStatusError:
+            return ["error:authentik-access-denied"]
 
 
 @router.get("/users")
@@ -31,7 +50,14 @@ async def get_all_users(admin=Depends(admin_required)):
                 headers={"Authorization": f"Bearer {AUTHENTIK_TOKEN}"}
             )
             res.raise_for_status()
-            return res.json()
+            users = res.json()
+
+            # Enrich each user with their groups
+            for user in users:
+                user["groups"] = await get_user_groups(user["pk"])
+
+            return users
+
         except httpx.RequestError:
             raise HTTPException(status_code=500, detail="Unable to reach Authentik")
         except httpx.HTTPStatusError as e:

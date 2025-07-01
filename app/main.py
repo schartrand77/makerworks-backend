@@ -1,61 +1,94 @@
-# main.py — MakerWorks Backend
+# /app/main.py
 
-from fastapi import FastAPI, Depends, Request, HTTPException
-from fastapi.responses import Response, JSONResponse
-from fastapi.routing import APIRoute
-from fastapi.staticfiles import StaticFiles
-from prometheus_client import generate_latest
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 
-from app.routes import router as api_router
-from app.routes import users, discord, ws_status, system, admin, jwks
-from app.middleware.cors import add_cors  # ✅ FIXED
-from app.config import settings
-from app.utils.logging import startup_banner
-from app.dependencies.metrics import verify_metrics_api_key
-
-app = FastAPI(
-    title="MakerWorks API",
-    version="1.0.0",
-    description="Backend for the MakerWorks platform (Auth: Authentik)",
+from app.config.settings import settings
+from app.routes import (
+    auth,
+    users,
+    system,
+    filaments,
+    upload,
+    admin,
+    cart,
+    checkout,
 )
 
-# Apply CORS middleware
-add_cors(app)
+from app.utils.boot_messages import random_boot_message
+from app.utils.system_info import get_system_status_snapshot
 
-# Serve uploaded/static files
-app.mount(
-    "/static",
-    StaticFiles(directory=settings.upload_dir, check_dir=False),
-    name="static"
+import logging
+
+logger = logging.getLogger("uvicorn")
+
+# ─── Create App ──────────────────────────────────────────────
+app = FastAPI(title="MakerWorks API")
+
+# ─── GZip Middleware ─────────────────────────────────────────
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# ─── CORS Middleware (Strict LAN-safe Origin Allowlist) ──────
+allowed_origins = settings.cors_origins or [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://192.168.1.191:5173",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# API route includes
-app.include_router(api_router, prefix="/api/v1")
-app.include_router(users.router, prefix="/api/v1")
-app.include_router(discord.router, prefix="/api/v1")
-app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
-app.include_router(ws_status.router, prefix="/api/v1/ws", tags=["WebSocket"])
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
-app.include_router(jwks.router, prefix="", tags=["JWKS"])
+# ─── Debug Middleware: Log Origin Headers ────────────────────
+@app.middleware("http")
+async def debug_origin(request: Request, call_next):
+    origin = request.headers.get("origin")
+    logger.debug(f"[CORS] Incoming Origin: {origin}")
+    return await call_next(request)
 
-
-# Metrics route
-@app.get("/metrics", include_in_schema=False)
-def metrics(_: None = Depends(verify_metrics_api_key)):
-    return Response(generate_latest(), media_type="text/plain")
-
-# Exception handler to return 401 JSON instead of 302
-@app.exception_handler(HTTPException)
-async def handle_auth_redirects(request: Request, exc: HTTPException):
-    if exc.status_code == 401:
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-
-# Startup route log
+# ─── Lifecycle Hook: System Info Snapshot ────────────────────
 @app.on_event("startup")
-async def startup_event():
-    routes = [
-        f"{r.path} [{','.join(sorted(r.methods))}] → {r.name}"
-        for r in app.routes if isinstance(r, APIRoute)
-    ]
-    startup_banner(route_count=len(routes), routes=routes)
+async def log_startup_system_info():
+    snapshot = await get_system_status_snapshot()
+    logger.info("📊 System Snapshot on Startup:")
+    for key, value in snapshot.items():
+        logger.info(f"   {key}: {value}")
+
+# ─── Route Registry Debug ────────────────────────────────────
+@app.get("/debug/routes", include_in_schema=False)
+async def debug_routes():
+    return JSONResponse([route.path for route in app.router.routes])
+
+# ─── Boot Logging ─────────────────────────────────────────────
+logger.info(f"✅ CORS origins allowed: {allowed_origins}")
+logger.info(f"🎬 Boot Message: {random_boot_message()}")
+
+# ─── Include Routes ──────────────────────────────────────────
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+logger.info("🔌 Mounted: /api/v1/auth")
+
+app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+logger.info("🔌 Mounted: /api/v1/users")
+
+app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
+logger.info("🔌 Mounted: /api/v1/system")
+
+app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
+logger.info("🔌 Mounted: /api/v1/upload")
+
+app.include_router(filaments.router, prefix="/api/v1/filaments", tags=["filaments"])
+logger.info("🔌 Mounted: /api/v1/filaments")
+
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+logger.info("🔌 Mounted: /api/v1/admin")
+
+app.include_router(cart.router, prefix="/api/v1/cart", tags=["cart"])
+logger.info("🔌 Mounted: /api/v1/cart")
+
+app.include_router(checkout.router, prefix="/api/v1/checkout", tags=["checkout"])
+logger.info("🔌 Mounted: /api/v1/checkout")

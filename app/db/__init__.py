@@ -1,6 +1,5 @@
-# app/db/__init__.py
+from app.db.base import Base
 from .database import (
-    Base,
     async_session,
     get_db,
     init_db,

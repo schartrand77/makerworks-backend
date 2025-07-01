@@ -1,64 +1,72 @@
 from __future__ import with_statement
-import asyncio
+
 import os
-print("🔗 DB URL (Alembic):", os.environ.get("DATABASE_URL"))
 import sys
 from logging.config import fileConfig
-from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import engine_from_config, pool
 from alembic import context
-
-# Ensure app module is on sys path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from app.models import Base
-from app.config import settings
+from pathlib import Path
 
 # ───────────────────────────────────────────────
-# Alembic Config
+# Force project root (/makerworks-backend) into sys.path
+# ───────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# ───────────────────────────────────────────────
+# Load SQLAlchemy Base + Settings
+# ───────────────────────────────────────────────
+try:
+    from app.models.models import Base  # ✅ Adjusted to actual structure
+    from app.config.settings import settings
+except ImportError as e:
+    raise RuntimeError(f"❌ Failed to import Base/config: {e}")
+
+# ───────────────────────────────────────────────
+# Alembic Configuration
 # ───────────────────────────────────────────────
 config = context.config
 fileConfig(config.config_file_name)
+
+sqlalchemy_url = getattr(settings, "database_url", None) or os.environ.get("DATABASE_URL")
+if not sqlalchemy_url:
+    raise RuntimeError("❌ No DATABASE_URL found in settings or environment.")
+
+config.set_main_option("sqlalchemy.url", sqlalchemy_url)
 target_metadata = Base.metadata
 
-# ✅ Use ASYNC URL for async engine
-async_url = settings.async_database_url
-
-# ✅ Use SYNC URL for offline mode
-sync_url = settings.database_url_sync
-
 # ───────────────────────────────────────────────
-# OFFLINE MODE
+# Migration logic
 # ───────────────────────────────────────────────
 def run_migrations_offline():
+    """Run migrations in 'offline' mode."""
     context.configure(
-        url=sync_url,
+        url=sqlalchemy_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
-# ───────────────────────────────────────────────
-# ONLINE MODE (Async-safe)
-# ───────────────────────────────────────────────
-async def run_migrations_online():
-    connectable = create_async_engine(async_url, poolclass=pool.NullPool)
 
-    async with connectable.connect() as connection:
-        def do_migrations(sync_connection):
-            context.configure(
-                connection=sync_connection,
-                target_metadata=target_metadata,
-                compare_type=True,
-            )
-            with context.begin_transaction():
-                context.run_migrations()
+def run_migrations_online():
+    """Run migrations in 'online' mode."""
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
 
-        await connection.run_sync(do_migrations)
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
 
 # ───────────────────────────────────────────────
 # Entrypoint
@@ -66,4 +74,4 @@ async def run_migrations_online():
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    run_migrations_online()

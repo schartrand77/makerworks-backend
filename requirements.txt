@@ -18,9 +18,8 @@ aiofiles
 python-dotenv
 
 # Auth, Security
-python-jose[cryptography]
+python-jose[cryptography]  # Used for all JWT signing/verification
 passlib[bcrypt]
-
 jwcrypto>=1.4.2
 
 # Redis & HTTP clients
@@ -35,3 +34,7 @@ loguru
 orjson
 psutil>=5.9.8
 python-decouple
+
+pillow
+
+loguru

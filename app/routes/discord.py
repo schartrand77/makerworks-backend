@@ -1,24 +1,41 @@
-from fastapi import APIRouter, HTTPException, Request, Response, status, WebSocket, WebSocketDisconnect, Depends
+# app/routes/discord.py
+
+from fastapi import (
+    APIRouter, HTTPException, Request, Response, status,
+    WebSocket, WebSocketDisconnect, Depends
+)
 from typing import List, Dict, Set
 import httpx
 import os
 import logging
 import asyncio
 
-from app.dependencies.auth import get_current_admin_user
+from app.dependencies.auth import get_user_from_headers, admin_required
+from app.models import User
 
 router = APIRouter()
 logger = logging.getLogger("makerworks.discord")
 
+# Environment config
 DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-# WebSocket clients
+if not DISCORD_CHANNEL_ID:
+    logger.warning("⚠️ DISCORD_CHANNEL_ID is not set — Discord feed will not work")
+
+if not DISCORD_BOT_TOKEN:
+    logger.warning("⚠️ DISCORD_BOT_TOKEN is not set — Discord API will not work")
+
+# ──────────────────────────────────────────────
+# WebSocket client tracking
+# ──────────────────────────────────────────────
 active_connections: Set[WebSocket] = set()
 
 
-# Fetch recent messages from Discord channel
+# ──────────────────────────────────────────────
+# Fetch recent messages from the Discord API
+# ──────────────────────────────────────────────
 async def fetch_discord_messages(limit: int = 5) -> List[Dict]:
     if not DISCORD_CHANNEL_ID or not DISCORD_BOT_TOKEN:
         logger.error("Missing DISCORD_CHANNEL_ID or DISCORD_BOT_TOKEN")
@@ -29,7 +46,7 @@ async def fetch_discord_messages(limit: int = 5) -> List[Dict]:
 
     async with httpx.AsyncClient() as client:
         try:
-            res = await client.get(url, headers=headers, params={"limit": limit})
+            res = await client.get(url, headers=headers, params={"limit": limit}, timeout=5.0)
             res.raise_for_status()
             messages = res.json()
             return [
@@ -47,13 +64,20 @@ async def fetch_discord_messages(limit: int = 5) -> List[Dict]:
             raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# GET latest messages (public route or protect if needed)
+# ──────────────────────────────────────────────
+# Public Routes
+# ──────────────────────────────────────────────
+
 @router.get("/discord/feed", status_code=200)
 async def get_discord_feed():
     return await fetch_discord_messages()
 
 
-# WebSocket: real-time broadcast to connected clients
+@router.get("/notifications", status_code=200)
+async def get_notifications_alias():
+    return await fetch_discord_messages()
+
+
 @router.websocket("/ws/discord/feed")
 async def websocket_discord_feed(websocket: WebSocket):
     await websocket.accept()
@@ -62,16 +86,20 @@ async def websocket_discord_feed(websocket: WebSocket):
 
     try:
         while True:
-            messages = await fetch_discord_messages()
-            for conn in list(active_connections):
-                try:
-                    await conn.send_json(messages)
-                except WebSocketDisconnect:
-                    active_connections.remove(conn)
-                    logger.info("WebSocket client disconnected")
-                except Exception as e:
-                    logger.error(f"Error sending WebSocket message: {e}")
-            await asyncio.sleep(30)
+            try:
+                messages = await fetch_discord_messages()
+                for conn in list(active_connections):
+                    try:
+                        await conn.send_json(messages)
+                    except WebSocketDisconnect:
+                        active_connections.remove(conn)
+                        logger.info("WebSocket client disconnected")
+                    except Exception as e:
+                        logger.error(f"Error sending WebSocket message: {e}")
+                await asyncio.sleep(30)
+            except Exception as e:
+                logger.warning(f"Fetch/send error in Discord feed loop: {e}")
+                await asyncio.sleep(30)
     except WebSocketDisconnect:
         active_connections.discard(websocket)
         logger.info("WebSocket client disconnected cleanly")
@@ -79,9 +107,15 @@ async def websocket_discord_feed(websocket: WebSocket):
         logger.exception("Unhandled error in WebSocket feed loop")
 
 
-# Admin: Set webhook URL (persisting in-memory or patch later to env/db)
-@router.post("/notifications/discord", status_code=204)
-async def save_webhook(payload: Dict[str, str], user=Depends(get_current_admin_user)):
+# ──────────────────────────────────────────────
+# Admin Routes
+# ──────────────────────────────────────────────
+
+@router.post("/notifications/discord", status_code=204, dependencies=[Depends(admin_required)])
+async def save_webhook(
+    payload: Dict[str, str],
+    user: User = Depends(get_user_from_headers),
+):
     url = payload.get("webhook_url")
     if not url:
         raise HTTPException(status_code=400, detail="Missing webhook_url")
@@ -92,9 +126,11 @@ async def save_webhook(payload: Dict[str, str], user=Depends(get_current_admin_u
     return Response(status_code=204)
 
 
-# Admin: Post message as bot using webhook
-@router.post("/notifications/discord/send")
-async def post_discord_message(payload: Dict[str, str], user=Depends(get_current_admin_user)):
+@router.post("/notifications/discord/send", dependencies=[Depends(admin_required)])
+async def post_discord_message(
+    payload: Dict[str, str],
+    user: User = Depends(get_user_from_headers),
+):
     message = payload.get("message")
     if not message:
         raise HTTPException(status_code=400, detail="Missing message")
@@ -104,7 +140,7 @@ async def post_discord_message(payload: Dict[str, str], user=Depends(get_current
 
     async with httpx.AsyncClient() as client:
         try:
-            res = await client.post(DISCORD_WEBHOOK_URL, json={"content": message})
+            res = await client.post(DISCORD_WEBHOOK_URL, json={"content": message}, timeout=5.0)
             res.raise_for_status()
             logger.info(f"[admin:{user.email}] sent message to Discord")
             return {"status": "ok"}

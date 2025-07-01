@@ -9,11 +9,12 @@ from typing import Optional, List
 # ─────────────────────────────────────────────────────────────
 
 class Token(BaseModel):
+    """Returned access token + type (usually 'bearer')"""
     access_token: str = Field(..., example="eyJhbGciOiJIUzI1...")
     token_type: str = Field(..., example="bearer")
+    scope: Optional[str] = Field(None, example="openid profile email")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -21,6 +22,7 @@ class Token(BaseModel):
 # ─────────────────────────────────────────────────────────────
 
 class TokenData(BaseModel):
+    """Optional JWT token claims (partially decoded)"""
     sub: Optional[str] = Field(None, example="authentik-user-id-uuid")
     email: Optional[EmailStr] = Field(None, example="user@example.com")
     name: Optional[str] = Field(None, example="John Doe")
@@ -28,8 +30,7 @@ class TokenData(BaseModel):
     groups: List[str] = Field(default_factory=list, example=["admin", "user"])
     picture: Optional[str] = Field(None, example="https://cdn.authentik.io/avatar.png")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ class TokenData(BaseModel):
 # ─────────────────────────────────────────────────────────────
 
 class TokenPayload(BaseModel):
+    """Full payload returned when decoding a JWT access token"""
     sub: str = Field(..., example="authentik-user-id-uuid")
     email: EmailStr = Field(..., example="user@example.com")
     name: Optional[str] = Field(None, example="John Doe")
@@ -46,5 +48,4 @@ class TokenPayload(BaseModel):
     exp: int = Field(..., example=1719268351, description="Expiration timestamp (UNIX epoch)")
     iat: int = Field(..., example=1719264751, description="Issued-at timestamp (UNIX epoch)")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}

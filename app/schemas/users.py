@@ -11,8 +11,7 @@ class UserBase(BaseModel):
     email: EmailStr = Field(..., example="user@example.com")
     username: constr(min_length=3, max_length=32) = Field(..., example="printmaster77")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # ─────────────────────────────────────────────────────────────
 # Output Schemas
@@ -30,8 +29,7 @@ class UserOut(UserBase):
     language: Optional[Literal['en', 'fr', 'es', 'de', 'zh', 'ja']] = Field(default="en")
     theme: Optional[Literal["light", "dark", "system"]] = Field(default="system", example="dark")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class PublicUserOut(BaseModel):
@@ -41,8 +39,7 @@ class PublicUserOut(BaseModel):
     bio: Optional[str] = Field(None, example="I build printer mods.")
     created_at: datetime = Field(..., example="2024-01-15T12:00:00Z")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # ─────────────────────────────────────────────────────────────
 # Update Schemas
@@ -56,23 +53,20 @@ class UserUpdate(BaseModel):
     theme: Optional[Literal["light", "dark", "system"]] = Field(None, example="dark")
     avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/user456.jpg")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class EmailUpdate(BaseModel):
     new_email: EmailStr = Field(..., example="new@example.com")
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class RoleUpdate(BaseModel):
     role: Literal['admin', 'user'] = Field(..., example="admin")
     user_id: int = Field(..., example=42)
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # ─────────────────────────────────────────────────────────────
 # Utility Schemas
@@ -89,21 +83,21 @@ class AvatarUpdate(BaseModel):
         description="Base64-encoded image as fallback"
     )
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = {
+        "from_attributes": True,
+        "json_schema_extra": {
             "example": {
                 "avatar_url": "https://cdn.makerworks.io/avatars/user123.jpg",
                 "base64_image": None
             }
         }
+    }
 
 
 class UsernameAvailability(BaseModel):
     available: bool = Field(..., example=True)
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # ─────────────────────────────────────────────────────────────
 # Admin Utility Schemas
@@ -124,5 +118,4 @@ class UserActionLog(BaseModel):
     action: UserAdminAction
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}

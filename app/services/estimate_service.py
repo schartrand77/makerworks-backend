@@ -1,7 +1,6 @@
 from app.schemas.estimate import EstimateRequest, EstimateResponse
 from sqlalchemy.orm import Session
-from app.models.model_metadata import ModelMetadata
-from app.models.filament_pricing import FilamentPricing
+from app.models.models import ModelMetadata, FilamentPricing
 
 PROFILE_SPEEDS = {
     "standard": 8.0,

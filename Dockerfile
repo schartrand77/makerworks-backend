@@ -1,44 +1,51 @@
-# ────── Stage 1: Build ──────
+# ─── Build Stage ─────────────────────────────────────────────
 FROM python:3.11-slim AS builder
-
 WORKDIR /app
 
-# Install build tools
-RUN apt-get update && apt-get install -y build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+  build-essential \
+  libpq-dev \
+  curl \
+  libjpeg-dev \
+  zlib1g-dev \
+  libmagic1 \
+  && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps early for caching
+# Install Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="/root/.local/bin:$PATH"
+
+# Copy dependency files first (better layer caching)
 COPY pyproject.toml poetry.lock ./
-RUN pip install poetry && poetry config virtualenvs.create false && poetry install --no-dev
 
-# ────── Stage 2: Runtime ──────
+# Configure Poetry and install only runtime deps
+RUN poetry config virtualenvs.create false \
+  && poetry install --only=main
+
+# ─── Runtime Stage ───────────────────────────────────────────
 FROM python:3.11-slim
-
 WORKDIR /app
 
-# Copy code and installed site-packages from builder
-COPY --from=builder /app /app
+# Install runtime libraries only
+RUN apt-get update && apt-get install -y \
+  libpq-dev \
+  libjpeg-dev \
+  zlib1g-dev \
+  libmagic1 \
+  && rm -rf /var/lib/apt/lists/*
 
-# Create runtime folders
+# Copy Python + Poetry deps from build stage
+COPY --from=builder /usr/local /usr/local
+
+# Copy source code
+COPY . .
+
+# Create necessary runtime dirs
 RUN mkdir -p /app/uploads /app/keys
 
-# Copy static frontend build
-COPY ./frontend/dist /usr/share/nginx/html
-
-# Copy NGINX config
-COPY ./nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy private key (during dev; mount in prod)
-COPY ./keys/private.pem ./keys/public.pem /app/keys/
-
-# Install NGINX and runtime dependencies
-RUN apt-get update && apt-get install -y nginx curl && rm -rf /var/lib/apt/lists/*
-
-# Uvicorn will serve FastAPI backend
+# Expose API port
 EXPOSE 8000
-EXPOSE 80
 
-# Copy entrypoint
-COPY ./start.sh /start.sh
-RUN chmod +x /start.sh
-
-CMD ["/start.sh"]
+# Run Gunicorn with Uvicorn worker
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "app.main:app", "--bind", "0.0.0.0:8000"]

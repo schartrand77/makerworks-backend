@@ -1,5 +1,5 @@
 from fastapi import Depends, HTTPException, Request, status
-from app.config import settings
+from app.config.settings import settings
 
 def verify_metrics_api_key(request: Request):
     key = request.headers.get("x-api-key")

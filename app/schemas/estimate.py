@@ -14,7 +14,11 @@ class EstimateRequest(BaseModel):
     print_profile: str = Field(..., description="Print profile: standard, quality, elite")
     custom_text: Optional[str] = Field(None, description="Optional engraving or label text")
 
+    model_config = {"from_attributes": True}
+
 
 class EstimateResponse(BaseModel):
     estimated_time_minutes: float = Field(..., example=85.4, description="Estimated total print time in minutes")
     estimated_cost_usd: float = Field(..., example=6.75, description="Estimated total print cost in USD")
+
+    model_config = {"from_attributes": True}

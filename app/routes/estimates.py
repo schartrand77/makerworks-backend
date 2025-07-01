@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies.auth import get_user_from_headers
+from app.models import User
 from app.schemas.estimate import EstimateRequest, EstimateResponse
-from app.schemas.token import TokenPayload
-from app.services.estimate_service import calculate_estimate  # Assume you modularized logic
+from app.services.estimate_service import calculate_estimate
 
 router = APIRouter(prefix="/estimates", tags=["Estimates"])
 
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/estimates", tags=["Estimates"])
 def estimate_model(
     data: EstimateRequest,
     db: Session = Depends(get_db),
-    user: TokenPayload = Depends(get_current_user),
+    user: User = Depends(get_user_from_headers),
 ):
     """
     Estimate print time and cost based on user-selected options and model metadata.

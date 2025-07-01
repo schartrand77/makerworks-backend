@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 import uuid
 
 from app.db.database import get_db
-from app.models import User, AuditLog
+from app.models.models import User, AuditLog
 from app.config import settings
 from app.services.redis_service import get_redis
 from app.services.token_blacklist import is_token_blacklisted

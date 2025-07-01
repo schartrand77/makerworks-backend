@@ -1,58 +1,134 @@
 # app/routes/auth.py
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from typing import Optional
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from datetime import datetime
+import logging
+import uuid
 
-from app.db.database import get_async_session
-from app.models.user import User
+from app.models import User
+from app.schemas.auth import SignupRequest, UserOut, AuthResponse
+from app.db.session import get_async_db
+from app.utils.security import hash_password, create_access_token
+from app.dependencies.auth import get_current_user
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
-
-
-class AuthResponse(BaseModel):
-    id: int
-    email: str
-    username: str
-    role: str
-    is_verified: bool
+router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
-async def get_user_from_headers(
-    x_authentik_email: str = Header(..., alias="X-Authentik-Email"),
-    x_authentik_username: str = Header(..., alias="X-Authentik-Username"),
-    x_authentik_groups: Optional[str] = Header("", alias="X-Authentik-Groups"),
-    session: AsyncSession = Depends(get_async_session),
-) -> User:
-    # Try to find the user in our local DB
-    result = await session.execute(
-        select(User).where(User.email == x_authentik_email)
-    )
-    user = result.scalars().first()
+@router.post("/signup", response_model=UserOut)
+async def signup(
+    payload: SignupRequest,
+    db: AsyncSession = Depends(get_async_db),
+    request: Request = None,
+):
+    try:
+        logger.debug("[SignUp] Received payload: %s", payload.dict())
 
-    # If not found, auto-provision the user from Authentik
-    if not user:
-        user = User(
-            email=x_authentik_email,
-            username=x_authentik_username,
-            is_verified=True,
-            role="admin" if "admin" in x_authentik_groups.lower() else "user",
+        # Check for existing email
+        result = await db.execute(select(User).where(User.email == payload.email))
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Email already in use.")
+
+        # Check for existing username
+        result = await db.execute(select(User).where(User.username == payload.username))
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Username already taken.")
+
+        new_user = User(
+            id=str(uuid.uuid4()),
+            email=payload.email,
+            username=payload.username,
+            hashed_password=hash_password(payload.password),
+            is_active=True,
+            is_verified=False,
+            role="user",
+            created_at=datetime.utcnow(),
+            theme="system",
+            language="en",
         )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
 
-    return user
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+
+        logger.info("[SignUp] User created successfully: %s", new_user.email)
+
+        return UserOut(**UserOut.model_validate(new_user).model_dump(mode="json"))
+
+    except HTTPException as he:
+        raise he
+    except Exception:
+        logger.exception("[SignUp] Internal server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal signup error. Please check backend logs."
+        )
 
 
-@router.get("/me", response_model=AuthResponse)
-async def get_current_user(user: User = Depends(get_user_from_headers)):
+@router.post("/token", response_model=AuthResponse)
+async def login_with_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        query = select(User).where(User.email == form_data.username)
+        result = await db.execute(query)
+        user = result.scalar_one_or_none()
+
+        if not user:
+            query = select(User).where(User.username == form_data.username)
+            result = await db.execute(query)
+            user = result.scalar_one_or_none()
+
+        if not user or not user.verify_password(form_data.password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account is disabled")
+
+        token = create_access_token(data={"sub": str(user.id)})
+
+        logger.info("[TokenLogin] Authenticated user: %s", user.email)
+
+        return AuthResponse(
+            **UserOut.model_validate(user).model_dump(),
+            token=token
+        )
+
+    except Exception:
+        logger.exception("[TokenLogin] Internal server error")
+        raise HTTPException(status_code=500, detail="Token login failed")
+
+
+@router.get("/me", response_model=UserOut)
+async def get_me(current_user: User = Depends(get_current_user)):
+    logger.debug("[GetMe] Current user: %s", current_user.email)
+    return UserOut.model_validate(current_user)
+
+
+@router.get("/test", response_model=AuthResponse)
+async def test_auth(current_user: User = Depends(get_current_user)):
+    logger.debug("[AuthTest] Current user: %s", current_user.email)
+    token = create_access_token(data={"sub": str(current_user.id)})
+
     return AuthResponse(
-        id=user.id,
-        email=user.email,
-        username=user.username,
-        role=user.role,
-        is_verified=user.is_verified,
+        **UserOut.model_validate(current_user).model_dump(),
+        token=token
     )
+    
+@router.get("/debug/user-out", response_model=UserOut)
+def debug_user_response():
+    user = db.query(User).first()
+    return UserOut(**UserOut.model_validate(user).model_dump(mode="json"))
+
+
+@router.get("/debug/validate-userout", response_model=UserOut)
+async def debug_validate_userout(db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(User))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="No users found in database.")
+    return UserOut.model_validate(user)

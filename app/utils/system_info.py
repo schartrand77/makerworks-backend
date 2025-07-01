@@ -5,17 +5,20 @@ import psutil
 import asyncpg
 import redis.asyncio as redis
 import pynvml
+import logging
 from datetime import datetime
-from app.config import settings
+from app.config.settings import settings
 
 START_TIME = time.time()
+logger = logging.getLogger("uvicorn")
 
 def get_uptime() -> float:
     return round(time.time() - START_TIME, 2)
 
 async def get_system_status_snapshot():
     """Return current backend system metrics for WebSocket streaming."""
-    # DB check
+
+    # ─── PostgreSQL Connectivity ──────────────────────────────
     try:
         import re
         raw_dsn = re.sub(r'\+asyncpg', '', settings.async_database_url)
@@ -23,17 +26,19 @@ async def get_system_status_snapshot():
         await conn.execute("SELECT 1")
         await conn.close()
         db_ok = True
-    except:
+    except Exception as e:
         db_ok = False
+        logger.warning(f"⚠️ PostgreSQL connectivity check failed: {e}")
 
-    # Redis check
+    # ─── Redis Connectivity ──────────────────────────────────
     try:
-        r = redis.Redis.from_url(settings.redis_url)
-        redis_ok = await r.ping()
-    except:
+        redis_client = redis.from_url(settings.redis_url)
+        redis_ok = await redis_client.ping()
+    except Exception as e:
         redis_ok = False
+        logger.warning(f"⚠️ Redis connectivity check failed: {e}")
 
-    # GPU check
+    # ─── GPU Detection (NVML) ────────────────────────────────
     try:
         pynvml.nvmlInit()
         gpu_count = pynvml.nvmlDeviceGetCount()
@@ -42,10 +47,12 @@ async def get_system_status_snapshot():
             for i in range(gpu_count)
         ]
         pynvml.nvmlShutdown()
-    except:
+    except Exception as e:
         gpus = ["None Detected"]
+        logger.warning(f"⚠️ GPU detection failed: {e}")
 
-    return {
+    # ─── Compose Snapshot ────────────────────────────────────
+    snapshot = {
         "timestamp": datetime.utcnow().isoformat(),
         "uptime_seconds": get_uptime(),
         "db_connected": db_ok,
@@ -54,6 +61,8 @@ async def get_system_status_snapshot():
         "cpu_logical": psutil.cpu_count(logical=True),
         "mem_gb": round(psutil.virtual_memory().total / 1024**3, 2),
         "gpus": gpus,
-        "authentik": True,  # Static true until API ping check is implemented
-        "frontend_connected": True,  # Static true unless dynamic tracking added
+        "authentik": True,  # TODO: Implement real status check
+        "frontend_connected": True,  # TODO: Implement real ping check
     }
+
+    return snapshot

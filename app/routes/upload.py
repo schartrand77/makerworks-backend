@@ -1,11 +1,11 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.models import Model3D, User
+from app.models import ModelMetadata, User
 from app.schemas.models import ModelUploadResponse
-from app.schemas.token import TokenPayload
-from app.services.auth_service import get_current_user
-from app.config import settings
+from app.schemas.token import TokenData
+from app.dependencies.auth import get_user_from_headers
+from app.config.settings import settings  # ✅ CORRECT
 from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
@@ -58,7 +58,7 @@ async def upload_model_or_avatar(
     type: str = Form(...),  # "model" or "avatar"
     name: str = Form(None),
     description: str = Form(""),
-    token: TokenPayload = Depends(get_current_user),
+    token: TokenData = Depends(get_user_from_headers),
     db: Session = Depends(get_db),
 ):
     user_id = token.sub

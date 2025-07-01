@@ -1,5 +1,3 @@
-# app/schemas/filaments.py
-
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -11,7 +9,7 @@ class FilamentCreate(BaseModel):
     surface: Optional[str] = None
     texture: Optional[str] = None
 
-    color: str = Field(..., alias="colorHex")  # hex value from frontend
+    color: str = Field(..., alias="colorHex")
     color_name: Optional[str] = Field(None, alias="colorName")
 
     price_per_kg: float = Field(..., alias="pricePerKg")
@@ -21,8 +19,9 @@ class FilamentCreate(BaseModel):
     is_active: Optional[bool] = True
     is_biodegradable: Optional[bool] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = {
+        "populate_by_name": True
+    }
 
 
 class FilamentUpdate(BaseModel):
@@ -42,8 +41,9 @@ class FilamentUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_biodegradable: Optional[bool] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = {
+        "populate_by_name": True
+    }
 
 
 class FilamentOut(BaseModel):
@@ -64,6 +64,7 @@ class FilamentOut(BaseModel):
     is_active: Optional[bool] = True
     is_biodegradable: Optional[bool] = None
 
-    class Config:
-        from_attributes = True
-        populate_by_name = True
+    model_config = {
+        "from_attributes": True,
+        "populate_by_name": True
+    }

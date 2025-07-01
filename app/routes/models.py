@@ -5,10 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.db.database import get_db
-from app.models.model_metadata import ModelMetadata
+from app.models import ModelMetadata
 from app.schemas.models import ModelOut
 from app.schemas.token import TokenData
-from app.dependencies import get_current_user
+from app.dependencies.auth import get_user_from_headers
 
 router = APIRouter(tags=["Models"])
 
@@ -22,7 +22,7 @@ router = APIRouter(tags=["Models"])
 async def list_models(
     mine: bool = Query(False, description="Only return models uploaded by the current user"),
     db: AsyncSession = Depends(get_db),
-    user: TokenData = Depends(get_current_user),
+    user: TokenData = Depends(get_user_from_headers),
 ):
     """
     List all uploaded models.
@@ -52,7 +52,7 @@ async def list_models(
 )
 async def get_duplicates(
     db: AsyncSession = Depends(get_db),
-    user: TokenData = Depends(get_current_user),
+    user: TokenData = Depends(get_user_from_headers),
 ):
     """
     List all models marked as duplicates based on geometry hash.
@@ -83,7 +83,7 @@ async def get_duplicates(
 async def delete_model(
     model_id: int,
     db: AsyncSession = Depends(get_db),
-    user: TokenData = Depends(get_current_user),
+    user: TokenData = Depends(get_user_from_headers),
 ):
     """
     Delete a model by ID, if the user is the uploader or has admin role.

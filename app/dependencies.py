@@ -3,26 +3,47 @@
 from fastapi import Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from typing import Optional, List
 import stripe
 
 from app.db.database import get_db
-from app.models.user import User
+from app.models.models import User
 from app.schemas.checkout import CheckoutRequest
-from app.config import settings
+from app.config.settings import settings
+
+
+def parse_group_header(header_value: Optional[str]) -> List[str]:
+    """
+    Parses a comma-separated header of groups into a list.
+    Example: "MakerWorks-Admin,MakerWorks-User" -> ["MakerWorks-Admin", "MakerWorks-User"]
+    """
+    if not header_value:
+        return []
+    return [g.strip() for g in header_value.split(",") if g.strip()]
 
 
 async def get_current_user(
     x_authentik_email: str = Header(..., alias="X-Authentik-Email"),
+    x_authentik_groups: Optional[str] = Header(None, alias="X-Authentik-Groups"),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
     Retrieve the current user from the database using Authentik-provided email header.
+    Also attach role from group membership.
     """
     result = await db.execute(select(User).where(User.email == x_authentik_email))
     user = result.scalar_one_or_none()
 
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    groups = parse_group_header(x_authentik_groups)
+    if "MakerWorks-Admin" in groups:
+        user.role = "admin"
+    elif "MakerWorks-User" in groups:
+        user.role = "user"
+    else:
+        user.role = "guest"
 
     return user
 

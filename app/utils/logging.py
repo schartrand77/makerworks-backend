@@ -12,7 +12,6 @@ from prometheus_client import Gauge, Info
 
 from app.utils.boot_messages import random_boot_message  # ✅ now loaded from external file
 
-# Time tracking for cold start
 START_TIME = time.time()
 
 class Colors:
@@ -46,19 +45,39 @@ def check_redis_available(url: str) -> bool:
 def check_postgres_available() -> bool:
     try:
         dsn = os.getenv("DATABASE_URL")
-        conn = psycopg2.connect(dsn, connect_timeout=1)
+        clean_dsn = dsn.replace("postgresql+psycopg2://", "postgresql://")
+        conn = psycopg2.connect(clean_dsn, connect_timeout=1)
         conn.close()
         return True
     except OperationalError:
         return False
 
 def check_authentik_available() -> bool:
+    default_url = "http://authentik:9000/outpost.goauthentik.io/ping"
+    fallback_url = "http://192.168.1.170:9000/outpost.goauthentik.io/ping"
+    attempted_urls = []
+
+    # Try default
     try:
-        url = os.getenv("AUTHENTIK_USERINFO_URL", "http://192.168.1.170:9000/application/o/userinfo/")
-        response = requests.options(url, timeout=2)
-        return response.status_code in (200, 204)
-    except Exception:
-        return False
+        attempted_urls.append(default_url)
+        resp = requests.get(default_url, timeout=2)
+        if resp.status_code == 204:
+            print(f"{Colors.OKGREEN}🛂 Authentik: Connected at {default_url}{Colors.RESET}", flush=True)
+            return True
+    except Exception as e:
+        print(f"{Colors.GREY}🛂 Authentik: Failed at {default_url} — {type(e).__name__}{Colors.RESET}", flush=True)
+
+    # Try fallback
+    try:
+        attempted_urls.append(fallback_url)
+        resp = requests.get(fallback_url, timeout=2)
+        if resp.status_code == 204:
+            print(f"{Colors.OKGREEN}🛂 Authentik: Connected at {fallback_url}{Colors.RESET}", flush=True)
+            return True
+    except Exception as e:
+        print(f"{Colors.FAIL}🛂 Authentik: Unreachable at both {attempted_urls} — {type(e).__name__}{Colors.RESET}", flush=True)
+
+    return False
 
 def detect_gpu() -> str:
     if os.system("nvidia-smi > /dev/null 2>&1") == 0:
@@ -68,63 +87,49 @@ def detect_gpu() -> str:
     return "None"
 
 def startup_banner(route_count: Optional[int] = None, routes: Optional[List[str]] = None):
-    print(f"{Colors.OKGREEN}🚀 MakerWorks Backend Started{Colors.RESET}")
-    print(f"{Colors.WARNING}🖥️  Platform: {platform.system()} {platform.release()}{Colors.RESET}")
-    print(f"{Colors.WARNING}🧠 CPU Cores: {os.cpu_count()}{Colors.RESET}")
+    print(f"{Colors.OKGREEN}🚀 MakerWorks Backend Started{Colors.RESET}", flush=True)
+    print(f"{Colors.WARNING}🖥️  Platform: {platform.system()} {platform.release()}{Colors.RESET}", flush=True)
+    print(f"{Colors.WARNING}🧠 CPU Cores: {os.cpu_count()}{Colors.RESET}", flush=True)
 
-    # Memory
     mem = psutil.virtual_memory()
     mem_used_mb = mem.used // (1024 ** 2)
-    print(f"{Colors.WARNING}📦 Memory: {mem_used_mb}MB used / {mem.total // (1024 ** 2)}MB total ({mem.percent}%) {Colors.RESET}")
+    print(f"{Colors.WARNING}📦 Memory: {mem_used_mb}MB used / {mem.total // (1024 ** 2)}MB total ({mem.percent}%) {Colors.RESET}", flush=True)
     memory_used_gauge.set(mem_used_mb)
     memory_percent_gauge.set(mem.percent)
 
-    # Redis
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
     redis_status = check_redis_available(redis_url)
     redis_color = Colors.OKGREEN if redis_status else Colors.FAIL
-    print(f"{redis_color}🧱 Redis: {'Connected' if redis_status else 'Unavailable'} ({redis_url}){Colors.RESET}")
+    print(f"{redis_color}🧱 Redis: {'Connected' if redis_status else 'Unavailable'} ({redis_url}){Colors.RESET}", flush=True)
     redis_status_gauge.set(1 if redis_status else 0)
 
-    # PostgreSQL
     pg_status = check_postgres_available()
     pg_color = Colors.OKGREEN if pg_status else Colors.FAIL
-    print(f"{pg_color}🗃️  PostgreSQL: {'Connected' if pg_status else 'Unavailable'}{Colors.RESET}")
+    print(f"{pg_color}🗃️  PostgreSQL: {'Connected' if pg_status else 'Unavailable'}{Colors.RESET}", flush=True)
     postgres_status_gauge.set(1 if pg_status else 0)
 
-    # Authentik
     ak_status = check_authentik_available()
     ak_color = Colors.OKGREEN if ak_status else Colors.FAIL
-    print(f"{ak_color}🛂 Authentik: {'Available' if ak_status else 'Unavailable'}{Colors.RESET}")
+    print(f"{ak_color}🛂 Authentik: {'Available' if ak_status else 'Unavailable'}{Colors.RESET}", flush=True)
     authentik_status_gauge.set(1 if ak_status else 0)
 
-    # GPU
     gpu = detect_gpu()
     gpu_color = Colors.OKGREEN if gpu != "None" else Colors.GREY
-    print(f"{gpu_color}🎮 GPU: {gpu}{Colors.RESET}")
+    print(f"{gpu_color}🎮 GPU: {gpu}{Colors.RESET}", flush=True)
     gpu_info.info({'type': gpu})
 
-    # Route summary
-    global _previous_routes
-    current_routes = set(routes or [])
-
+    # Log route count only
     if route_count is not None:
-        print(f"{Colors.CYAN}📚 Registered Routes: {route_count}{Colors.RESET}")
+        print(f"{Colors.CYAN}📚 Registered Routes: {route_count}{Colors.RESET}", flush=True)
         route_count_gauge.set(route_count)
 
-    if routes:
-        print(f"{Colors.CYAN}📚 Route Map:{Colors.RESET}")
-        for r in sorted(current_routes):
-            prefix = "➕ " if r not in _previous_routes else "   "
-            color = Colors.OKGREEN if r not in _previous_routes else Colors.GREY
-            print(f"{color}{prefix}{r}{Colors.RESET}")
+    # Save routes internally (but don’t print them)
+    global _previous_routes
+    _previous_routes = set(routes or [])
 
-    _previous_routes = current_routes
-
-    # Time taken
+    # Boot time + funny message
     elapsed = time.time() - START_TIME
-    print(f"{Colors.CYAN}⏱️  Startup Time: {elapsed:.2f}s{Colors.RESET}")
+    print(f"{Colors.CYAN}⏱️  Startup Time: {elapsed:.2f}s{Colors.RESET}", flush=True)
     startup_time_gauge.set(elapsed)
 
-    # Boot footer
-    print(f"{Colors.BOLD}{Colors.CYAN}{random_boot_message()}{Colors.RESET}")
+    print(f"{Colors.BOLD}{Colors.CYAN}{random_boot_message()}{Colors.RESET}", flush=True)

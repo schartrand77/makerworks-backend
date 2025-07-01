@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from app.db.database import engine
-from app.models import Base
+from app.models.models import Base
 
 logger = logging.getLogger("makerworks.drop")
 logging.basicConfig(level=logging.INFO)

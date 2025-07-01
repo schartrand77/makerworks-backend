@@ -1,18 +1,17 @@
 # app/routes/filaments.py
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from typing import List
 
 from app.schemas.filaments import FilamentCreate, FilamentUpdate, FilamentOut
-from app.models import Filament
-from app.db.database import get_db
-from app.dependencies import get_current_admin
+from app.models import Filament, User
+from app.db.session import get_async_db
+from app.dependencies.auth import get_user_from_headers, assert_user_is_admin
 
-router = APIRouter(
-    prefix="/filaments",
-    tags=["Filaments"],
-)
+router = APIRouter()
+
 
 # ─────────────────────────────────────────────────────────────
 # GET /filaments/ — List all active filaments
@@ -24,8 +23,10 @@ router = APIRouter(
     response_model=List[FilamentOut],
     response_model_exclude_none=True,
 )
-def list_filaments(db: Session = Depends(get_db)):
-    return db.query(Filament).filter(Filament.is_active == True).all()
+async def list_filaments(db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(Filament).where(Filament.is_active == True))
+    return result.scalars().all()
+
 
 # ─────────────────────────────────────────────────────────────
 # POST /filaments/ — Create new filament (admin only)
@@ -37,16 +38,18 @@ def list_filaments(db: Session = Depends(get_db)):
     response_model=FilamentOut,
     response_model_exclude_none=True,
 )
-def add_filament(
+async def add_filament(
     filament: FilamentCreate,
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+    user: User = Depends(get_user_from_headers),
 ):
+    assert_user_is_admin(user)
     new_filament = Filament(**filament.dict(by_alias=True))
     db.add(new_filament)
-    db.commit()
-    db.refresh(new_filament)
+    await db.commit()
+    await db.refresh(new_filament)
     return new_filament
+
 
 # ─────────────────────────────────────────────────────────────
 # PUT /filaments/{fid} — Update filament by ID (admin only)
@@ -58,22 +61,26 @@ def add_filament(
     response_model=FilamentOut,
     response_model_exclude_none=True,
 )
-def update_filament(
+async def update_filament(
     fid: int,
     updates: FilamentUpdate,
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+    user: User = Depends(get_user_from_headers),
 ):
-    filament = db.query(Filament).filter(Filament.id == fid).first()
+    assert_user_is_admin(user)
+    result = await db.execute(select(Filament).where(Filament.id == fid))
+    filament = result.scalar_one_or_none()
+
     if not filament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filament not found.")
 
     for field, value in updates.dict(exclude_unset=True, by_alias=True).items():
         setattr(filament, field, value)
 
-    db.commit()
-    db.refresh(filament)
+    await db.commit()
+    await db.refresh(filament)
     return filament
+
 
 # ─────────────────────────────────────────────────────────────
 # DELETE /filaments/{fid} — Soft-delete filament by ID
@@ -83,18 +90,22 @@ def update_filament(
     summary="Soft-delete a filament (admin only)",
     status_code=status.HTTP_200_OK,
 )
-def delete_filament(
+async def delete_filament(
     fid: int,
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_async_db),
+    user: User = Depends(get_user_from_headers),
 ):
-    filament = db.query(Filament).filter(Filament.id == fid).first()
+    assert_user_is_admin(user)
+    result = await db.execute(select(Filament).where(Filament.id == fid))
+    filament = result.scalar_one_or_none()
+
     if not filament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filament not found.")
 
     filament.is_active = False
-    db.commit()
+    await db.commit()
     return {"deleted": True, "id": filament.id}
+
 
 # ─────────────────────────────────────────────────────────────
 # GET /filaments/picker — Return nested data for frontend fanout picker
@@ -104,20 +115,24 @@ def delete_filament(
     summary="Get filament picker data for frontend",
     status_code=status.HTTP_200_OK,
 )
-def get_filament_picker_data(db: Session = Depends(get_db)):
-    filaments = db.query(Filament).filter(Filament.is_active == True).all()
-    result = {}
+async def get_filament_picker_data(db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(Filament).where(Filament.is_active == True))
+    filaments = result.scalars().all()
+    picker = {}
 
     for f in filaments:
-        category = f.type
+        category = f.type or "Uncategorized"
         subtype = f.subtype or "Default"
-        if category not in result:
-            result[category] = {}
-        if subtype not in result[category]:
-            result[category][subtype] = {"colors": []}
-        result[category][subtype]["colors"].append({
+        if category not in picker:
+            picker[category] = {}
+        if subtype not in picker[category]:
+            picker[category][subtype] = {"colors": []}
+        picker[category][subtype]["colors"].append({
+            "id": f.id,
             "name": f.color_name or f.color,
-            "hex": f.color or "#CCCCCC"
+            "hex": f.color,
+            "pricePerKg": f.price_per_kg,
+            "isBiodegradable": f.is_biodegradable or False,
         })
 
-    return result
+    return picker

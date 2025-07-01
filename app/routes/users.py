@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from typing import Optional
 import shutil
 import os
@@ -8,10 +9,12 @@ import uuid
 from datetime import datetime
 
 from app.db.database import get_db
-from app.config import settings
-from app.schemas.auth import TokenPayload
-from app.services.auth_service import get_current_user
-from pydantic import BaseModel
+from app.config.settings import settings
+from app.schemas.token import TokenData
+from app.dependencies.auth import get_user_from_headers, get_current_user
+from app.models import User
+from app.schemas.user import UpdateUserProfile, UserOut
+from pydantic import BaseModel, field_serializer
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -28,35 +31,58 @@ class MeResponse(BaseModel):
     avatar: str
     groups: list[str]
 
+
 class AvatarUploadResponse(BaseModel):
     status: str
     avatar_url: str
     uploaded_at: str
 
+
 class AvatarLookupResponse(BaseModel):
     avatar_url: str
+
 
 class UsernameCheckResponse(BaseModel):
     available: bool
     note: str
 
+
 class AdminUserListStub(BaseModel):
     note: str
+
 
 # ─────────────────────────────────────────────────────────────
 # GET /users/me (from Authentik token)
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/me", response_model=MeResponse, summary="Get current user (OIDC token from Authentik)")
-async def get_me(token: TokenPayload = Depends(get_current_user)):
+async def get_me(token: TokenData = Depends(get_user_from_headers)):
     """Returns basic user info derived from the Authentik-issued token."""
     return {
-        "sub": token.sub,
+        "sub": str(token.sub),
         "username": token.username,
         "email": token.email,
         "avatar": f"/static/avatars/user_{token.sub}.png",
         "groups": token.groups,
     }
+
+
+# ─────────────────────────────────────────────────────────────
+# PATCH /users/me (update profile info)
+# ─────────────────────────────────────────────────────────────
+
+@router.patch("/me", response_model=UserOut, summary="Update user profile (bio, etc.)")
+async def update_profile(
+    payload: UpdateUserProfile,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Allows a user to update their profile (currently only bio)."""
+    current_user.bio = payload.bio
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)
+
 
 # ─────────────────────────────────────────────────────────────
 # POST /users/avatar (store using Authentik UUID)
@@ -65,7 +91,7 @@ async def get_me(token: TokenPayload = Depends(get_current_user)):
 @router.post("/avatar", response_model=AvatarUploadResponse, summary="Upload avatar image (stored by sub UUID)")
 async def upload_avatar(
     file: UploadFile = File(...),
-    token: TokenPayload = Depends(get_current_user)
+    token: TokenData = Depends(get_user_from_headers)
 ):
     """Store a user avatar using their Authentik `sub` as file identifier."""
     os.makedirs(AVATAR_DIR, exist_ok=True)
@@ -86,6 +112,7 @@ async def upload_avatar(
         "uploaded_at": datetime.utcnow().isoformat()
     }
 
+
 # ─────────────────────────────────────────────────────────────
 # GET /users/username/check (placeholder — Authentik handles usernames)
 # ─────────────────────────────────────────────────────────────
@@ -95,16 +122,18 @@ async def check_username():
     """Always returns false — username management is delegated to Authentik."""
     return {"available": False, "note": "Username is managed by Authentik"}
 
+
 # ─────────────────────────────────────────────────────────────
 # GET /users (admin-only stub — use Authentik API for user list)
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/", response_model=AdminUserListStub, summary="Admin-only: stub for full user list")
-async def get_all_users(token: TokenPayload = Depends(get_current_user)):
+async def get_all_users(token: TokenData = Depends(get_user_from_headers)):
     """Stub for fetching all users — use Authentik API directly instead."""
     if "admin" not in token.groups:
         raise HTTPException(status_code=403, detail="Admin access required")
     return {"note": "User listing handled by Authentik admin panel or API."}
+
 
 # ─────────────────────────────────────────────────────────────
 # GET /users/avatar/{user_sub}

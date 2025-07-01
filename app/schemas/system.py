@@ -9,8 +9,8 @@ class SystemStatus(BaseModel):
     host: str = Field(..., example="a1b2c3d4e5", description="Hostname of the server container")
     timestamp: str = Field(..., example="2025-06-17T15:40:00Z", description="UTC timestamp of the status check")
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "status": "ok",
                 "db_connected": True,
@@ -19,3 +19,4 @@ class SystemStatus(BaseModel):
                 "timestamp": "2025-06-17T15:40:00Z",
             }
         }
+    }
