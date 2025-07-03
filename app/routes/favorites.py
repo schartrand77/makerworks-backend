@@ -2,14 +2,14 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from sqlalchemy.orm import Session
-from sqlalchemy.future import select
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.models import ModelMetadata, Favorite
+from app.dependencies import get_current_user
+from app.models import Favorite, ModelMetadata
 from app.schemas import ModelOut
 from app.schemas.token import TokenPayload
-from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/favorites", tags=["Favorites"])
 
@@ -21,22 +21,24 @@ router = APIRouter(prefix="/favorites", tags=["Favorites"])
     response_model=list[ModelOut],
 )
 async def get_user_favorites(
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
     """
     Retrieve all models favorited by the currently authenticated user.
     """
-    result = (
-        db.query(ModelMetadata)
+    result = await db.execute(
+        select(ModelMetadata)
         .join(Favorite, Favorite.model_id == ModelMetadata.id)
         .filter(Favorite.user_id == user.sub)
-        .all()
     )
+    models = result.scalars().all()
 
     return [
-        ModelOut.model_validate(m).serialize(role="admin" if "admin" in user.groups else "user")
-        for m in result
+        ModelOut.model_validate(m).serialize(
+            role="admin" if "admin" in user.groups else "user"
+        )
+        for m in models
     ]
 
 
@@ -48,16 +50,19 @@ async def get_user_favorites(
 )
 async def add_to_favorites(
     model_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
     """
     Add a model to the authenticated user's favorites list.
     """
-    exists = db.query(Favorite).filter_by(user_id=user.sub, model_id=model_id).first()
+    result = await db.execute(
+        select(Favorite).filter_by(user_id=user.sub, model_id=model_id)
+    )
+    exists = result.scalar_one_or_none()
     if not exists:
         db.add(Favorite(user_id=user.sub, model_id=model_id))
-        db.commit()
+        await db.commit()
 
 
 @router.delete(
@@ -68,14 +73,17 @@ async def add_to_favorites(
 )
 async def remove_from_favorites(
     model_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user: TokenPayload = Depends(get_current_user),
 ):
     """
     Remove a model from the user's favorites list.
     """
-    favorite = db.query(Favorite).filter_by(user_id=user.sub, model_id=model_id).first()
+    result = await db.execute(
+        select(Favorite).filter_by(user_id=user.sub, model_id=model_id)
+    )
+    favorite = result.scalar_one_or_none()
     if not favorite:
         raise HTTPException(status_code=404, detail="Favorite not found")
-    db.delete(favorite)
-    db.commit()
+    await db.delete(favorite)
+    await db.commit()

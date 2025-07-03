@@ -1,17 +1,19 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
-from sqlalchemy.orm import Session
+import logging
+import shutil
+from datetime import datetime
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
 from app.db.database import get_db
 from app.models import Model3D, User
 from app.schemas.models import ModelUploadResponse
 from app.schemas.token import TokenPayload
 from app.services.auth_service import get_current_user
-from app.config import settings
-from uuid import uuid4
-from datetime import datetime
-from pathlib import Path
-import shutil
-import logging
-import os
 
 router = APIRouter()
 
@@ -36,6 +38,7 @@ ALLOWED_IMAGE_TYPES = [
     "image/webp",
 ]
 
+
 # ─────────────────────────────────────────────────────────────
 # Ensure upload directories exist
 # ─────────────────────────────────────────────────────────────
@@ -46,8 +49,10 @@ def safe_mkdir(path):
         print(f"[ERROR] Could not create directory {path}: {e}")
         raise HTTPException(status_code=500, detail=f"Upload directory error: {e}")
 
+
 safe_mkdir(AVATAR_DIR)
 safe_mkdir(MODEL_DIR)
+
 
 # ─────────────────────────────────────────────────────────────
 # POST /api/v1/upload
@@ -59,13 +64,15 @@ async def upload_model_or_avatar(
     name: str = Form(None),
     description: str = Form(""),
     token: TokenPayload = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     user_id = token.sub
 
     if type not in ["model", "avatar"]:
         logging.warning(f"[WARN] Invalid upload type: {type}")
-        raise HTTPException(status_code=400, detail="Invalid upload type. Must be 'model' or 'avatar'.")
+        raise HTTPException(
+            status_code=400, detail="Invalid upload type. Must be 'model' or 'avatar'."
+        )
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided.")
@@ -77,7 +84,9 @@ async def upload_model_or_avatar(
     # ─────────────── Upload Model ───────────────
     if type == "model":
         if file.content_type not in ALLOWED_MODEL_TYPES:
-            raise HTTPException(status_code=400, detail="Unsupported 3D model file type")
+            raise HTTPException(
+                status_code=400, detail="Unsupported 3D model file type"
+            )
 
         model_id = str(uuid4())
         save_path = MODEL_DIR / f"{model_id}{ext}"
@@ -102,8 +111,8 @@ async def upload_model_or_avatar(
             is_duplicate=False,
         )
         db.add(model)
-        db.commit()
-        db.refresh(model)
+        await db.commit()
+        await db.refresh(model)
 
         return ModelUploadResponse(
             id=model.id,
@@ -115,7 +124,9 @@ async def upload_model_or_avatar(
     # ─────────────── Upload Avatar ───────────────
     elif type == "avatar":
         if file.content_type not in ALLOWED_IMAGE_TYPES:
-            raise HTTPException(status_code=400, detail="Unsupported image type for avatar upload")
+            raise HTTPException(
+                status_code=400, detail="Unsupported image type for avatar upload"
+            )
 
         avatar_id = f"{user_id}_{uuid4().hex[:8]}"
         save_path = AVATAR_DIR / f"{avatar_id}{ext}"
@@ -128,14 +139,15 @@ async def upload_model_or_avatar(
             logging.error(f"[ERROR] Saving avatar failed: {e}")
             raise HTTPException(status_code=500, detail="Failed to save avatar file")
 
-        user = db.query(User).filter(User.id == user_id).first()
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalar_one_or_none()
         if not user:
             logging.warning(f"[WARN] No user found with ID: {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
 
         user.avatar_url = f"/uploads/avatars/{avatar_id}{ext}"
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
 
         return ModelUploadResponse(
             id=avatar_id,
