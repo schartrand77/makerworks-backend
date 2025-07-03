@@ -6,6 +6,7 @@ import redis
 import random
 import psycopg2
 import requests
+import logging
 from psycopg2 import OperationalError
 from typing import Optional, List
 from prometheus_client import Gauge, Info
@@ -14,6 +15,17 @@ from app.utils.boot_messages import random_boot_message  # ✅ now loaded from e
 
 START_TIME = time.time()
 
+# ─────────── Structured Logger (for imports) ───────────
+logger = logging.getLogger("makerworks")
+logger.setLevel(logging.INFO)
+
+if not logger.hasHandlers():
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+# ─────────── Terminal Colors ───────────
 class Colors:
     OKGREEN = '\033[92m'
     WARNING = '\033[93m'
@@ -118,16 +130,13 @@ def startup_banner(route_count: Optional[int] = None, routes: Optional[List[str]
     print(f"{gpu_color}🎮 GPU: {gpu}{Colors.RESET}", flush=True)
     gpu_info.info({'type': gpu})
 
-    # Log route count only
     if route_count is not None:
         print(f"{Colors.CYAN}📚 Registered Routes: {route_count}{Colors.RESET}", flush=True)
         route_count_gauge.set(route_count)
 
-    # Save routes internally (but don’t print them)
     global _previous_routes
     _previous_routes = set(routes or [])
 
-    # Boot time + funny message
     elapsed = time.time() - START_TIME
     print(f"{Colors.CYAN}⏱️  Startup Time: {elapsed:.2f}s{Colors.RESET}", flush=True)
     startup_time_gauge.set(elapsed)

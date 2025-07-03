@@ -8,6 +8,7 @@ import pynvml
 import logging
 from datetime import datetime
 from app.config.settings import settings
+from rich import print as rprint
 
 START_TIME = time.time()
 logger = logging.getLogger("uvicorn")
@@ -16,7 +17,23 @@ def get_uptime() -> float:
     return round(time.time() - START_TIME, 2)
 
 async def get_system_status_snapshot():
-    """Return current backend system metrics for WebSocket streaming."""
+    """Return current backend system metrics for WebSocket streaming and logs."""
+
+    # ─── Compose Snapshot ────────────────────────────────────
+    snapshot = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "uptime_seconds": get_uptime(),
+        "host": socket.gethostname(),
+        "cpu_logical": psutil.cpu_count(logical=True),
+        "mem_gb": round(psutil.virtual_memory().total / 1024**3, 2),
+        "gpus": [],
+        "statuses": {
+            "PostgreSQL": {"connected": False, "color": "red"},
+            "Redis": {"connected": False, "color": "red"},
+            "Authentik": {"connected": True, "color": "cyan"},
+            "Frontend": {"connected": True, "color": "blue"}
+        }
+    }
 
     # ─── PostgreSQL Connectivity ──────────────────────────────
     try:
@@ -25,44 +42,53 @@ async def get_system_status_snapshot():
         conn = await asyncpg.connect(raw_dsn)
         await conn.execute("SELECT 1")
         await conn.close()
-        db_ok = True
+        snapshot["statuses"]["PostgreSQL"]["connected"] = True
+        snapshot["statuses"]["PostgreSQL"]["color"] = "green"
+        rprint("[bold green]✅ PostgreSQL connection successful[/bold green]")
     except Exception as e:
-        db_ok = False
-        logger.warning(f"⚠️ PostgreSQL connectivity check failed: {e}")
+        rprint(f"[bold red]❌ PostgreSQL connection failed:[/bold red] {e}")
 
     # ─── Redis Connectivity ──────────────────────────────────
     try:
         redis_client = redis.from_url(settings.redis_url)
-        redis_ok = await redis_client.ping()
+        if await redis_client.ping():
+            snapshot["statuses"]["Redis"]["connected"] = True
+            snapshot["statuses"]["Redis"]["color"] = "green"
+            rprint("[bold green]✅ Redis ping successful[/bold green]")
     except Exception as e:
-        redis_ok = False
-        logger.warning(f"⚠️ Redis connectivity check failed: {e}")
+        rprint(f"[bold red]❌ Redis connection failed:[/bold red] {e}")
 
     # ─── GPU Detection (NVML) ────────────────────────────────
     try:
         pynvml.nvmlInit()
         gpu_count = pynvml.nvmlDeviceGetCount()
-        gpus = [
-            pynvml.nvmlDeviceGetName(pynvml.nvmlDeviceGetHandleByIndex(i)).decode()
-            for i in range(gpu_count)
-        ]
+        gpus = []
+        for i in range(gpu_count):
+            raw_name = pynvml.nvmlDeviceGetName(pynvml.nvmlDeviceGetHandleByIndex(i))
+            name = raw_name.decode() if isinstance(raw_name, bytes) else str(raw_name)
+            gpus.append({"name": name, "color": "teal"})
         pynvml.nvmlShutdown()
+        snapshot["gpus"] = gpus
+        rprint(f"[bold cyan]🖥️ Detected GPUs:[/bold cyan] {', '.join([g['name'] for g in gpus])}")
     except Exception as e:
-        gpus = ["None Detected"]
-        logger.warning(f"⚠️ GPU detection failed: {e}")
+        snapshot["gpus"] = [{"name": "None Detected", "color": "gray"}]
+        rprint(f"[bold yellow]⚠️ GPU detection failed:[/bold yellow] {e}")
 
-    # ─── Compose Snapshot ────────────────────────────────────
-    snapshot = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "uptime_seconds": get_uptime(),
-        "db_connected": db_ok,
-        "redis_connected": redis_ok,
-        "host": socket.gethostname(),
-        "cpu_logical": psutil.cpu_count(logical=True),
-        "mem_gb": round(psutil.virtual_memory().total / 1024**3, 2),
-        "gpus": gpus,
-        "authentik": True,  # TODO: Implement real status check
-        "frontend_connected": True,  # TODO: Implement real ping check
-    }
+    # ─── Final Snapshot Print ────────────────────────────────
+    rprint("\n[bold bright_white]📊 System Snapshot on Startup:[/bold bright_white]")
+    rprint(f"[cyan]   timestamp[/cyan]: [white]{snapshot['timestamp']}[/white]")
+    rprint(f"[cyan]   uptime_seconds[/cyan]: [white]{snapshot['uptime_seconds']}[/white]")
+    rprint(f"[cyan]   host[/cyan]: [white]{snapshot['host']}[/white]")
+    rprint(f"[cyan]   cpu_logical[/cyan]: [white]{snapshot['cpu_logical']}[/white]")
+    rprint(f"[cyan]   mem_gb[/cyan]: [white]{snapshot['mem_gb']}[/white]")
+
+    gpu_names = ', '.join([g['name'] for g in snapshot['gpus']])
+    rprint(f"[cyan]   gpus[/cyan]: [white]{gpu_names}[/white]")
+
+    rprint(f"[cyan]   statuses:[/cyan]")
+    for name, stat in snapshot["statuses"].items():
+        color = stat["color"]
+        icon = "✅" if stat["connected"] else "❌"
+        rprint(f"      [{color}]{icon} {name}[/]")
 
     return snapshot

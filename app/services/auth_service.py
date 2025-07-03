@@ -1,6 +1,7 @@
+# app/services/auth_service.py
+
 from datetime import datetime, timedelta
 from typing import Optional
-from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from app.models.models import User, AuditLog
 from app.config import settings
 from app.services.redis_service import get_redis
 from app.services.token_blacklist import is_token_blacklisted
+from app.services.token_service import create_access_token as issue_token, verify_token_rs256
 
 # ────────────────────────────────────────────────────────────────────────────────
 # AUTH CONSTANTS
@@ -39,40 +41,24 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 # ────────────────────────────────────────────────────────────────────────────────
-# JWT CREATION
+# JWT CREATION (via RS256)
 # ────────────────────────────────────────────────────────────────────────────────
 
-def create_access_token(
-    user: User,
-    expires_delta: Optional[timedelta] = timedelta(minutes=60)
-) -> str:
-    expire = datetime.utcnow() + expires_delta
-    jti = str(uuid.uuid4())
-
-    payload = {
-        "sub": str(user.id),
-        "email": user.email,
-        "role": user.role,
-        "exp": int(expire.timestamp()),
-        "iat": int(datetime.utcnow().timestamp()),
-        "jti": jti,
-    }
-
-    token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
-    return token
+def create_access_token(user: User, expires_delta: Optional[timedelta] = timedelta(hours=1)) -> str:
+    return issue_token(user_id=str(user.id), email=user.email, role=user.role, expires_delta=expires_delta)
 
 # ────────────────────────────────────────────────────────────────────────────────
-# JWT VERIFICATION
+# JWT VERIFICATION (RS256 + Redis JTI Blacklist)
 # ────────────────────────────────────────────────────────────────────────────────
 
 async def verify_token(token: str, redis: Redis) -> dict:
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = await verify_token_rs256(token)
         jti = payload.get("jti")
         if jti and await is_token_blacklisted(redis, jti):
             raise HTTPException(status_code=401, detail="Token has been revoked")
         return payload
-    except JWTError:
+    except Exception:
         raise credentials_exception
 
 decode_access_token = verify_token  # alias

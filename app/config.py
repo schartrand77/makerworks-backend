@@ -8,9 +8,11 @@ from pydantic import Field, AnyHttpUrl, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ─────────────────────────────────────────────
-# Load from local .env explicitly
+# Load from local .env explicitly (robust fallback)
 # ─────────────────────────────────────────────
 env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+if not os.path.exists(env_path):
+    env_path = os.path.join(os.path.dirname(__file__), "../..", ".env")
 load_dotenv(dotenv_path=env_path)
 
 
@@ -46,7 +48,13 @@ class Settings(BaseSettings):
     # DATABASE
     # ────────────────
     database_url: str = Field(..., alias="DATABASE_URL")
-    async_database_url: str = Field(..., alias="ASYNC_DATABASE_URL")
+
+    @property
+    def async_database_url(self) -> str:
+        """Returns async version of DATABASE_URL"""
+        if "+asyncpg" in self.database_url:
+            return self.database_url
+        return self.database_url.replace("postgresql", "postgresql+asyncpg")
 
     @property
     def database_url_sync(self) -> str:
@@ -113,3 +121,5 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+__all__ = ["settings"]
