@@ -1,16 +1,16 @@
 # MakerWorks Backend
 
-This is the FastAPI + Celery + PostgreSQL backend powering the MakerWorks 3D printing platform.
+MakerWorks is a FastAPI-based backend that powers the MakerWorks 3D printing platform. It provides user authentication, model uploads and background processing via Celery workers.
 
 ## Features
-- 🔐 JWT Auth, Signup, Login
-- 🔧 Upload & STL metadata extraction
-- 📸 Thumbnail rendering (Blender)
-- 🎯 Redis queue + Celery for background jobs
-- 📁 PostgreSQL via SQLAlchemy
+- **JWT Authentication** for signup and login
+- **Redis + Celery** queue for background tasks
+- **STL analysis** and **thumbnail rendering** using Blender
+- **PostgreSQL** database managed with SQLAlchemy and Alembic
 
-## Dev Setup
+## Getting Started
 
+### Local Development
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -20,5 +20,26 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
+### Docker Compose
+```bash
+docker-compose up --build
+```
+
+Environment variables are documented in `.env.example` and loaded automatically via `app/config.py`.
+
+## Project Layout
+```
+app/
+  ├─ config/        # Settings and environment configuration
+  ├─ routes/        # API route declarations
+  ├─ models/        # SQLAlchemy models
+  ├─ services/      # Business logic modules
+  ├─ utils/         # Helper utilities
+  └─ ...
+```
+
+## Contributing
+Pull requests are welcome! For major changes please open an issue first to discuss what you would like to change.
+
 ## License
-MIT
+This project is licensed under the MIT License.
