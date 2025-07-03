@@ -38,7 +38,7 @@ EXPOSE 8000
 EXPOSE 80
 
 # Copy entrypoint
-COPY ./start.sh /start.sh
-RUN chmod +x /start.sh
+COPY ./app/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
-CMD ["/start.sh"]
+CMD ["/app/docker-entrypoint.sh"]
