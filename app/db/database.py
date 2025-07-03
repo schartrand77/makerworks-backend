@@ -7,10 +7,14 @@ from typing import AsyncGenerator
 import logging
 import os
 
-DATABASE_URL = os.getenv("ASYNC_DATABASE_URL", "postgresql+asyncpg://authentik:authentik@192.168.1.170:5432/makerworks")
+DATABASE_URL = os.getenv(
+    "ASYNC_DATABASE_URL",
+    "postgresql+asyncpg://authentik:authentik@192.168.1.170:5432/makerworks",
+)
 
 logger = logging.getLogger("makerworks.database")
-logger.info(f"[DB] Loaded ASYNC_DATABASE_URL = {DATABASE_URL}")
+redacted = DATABASE_URL.split("@")[-1]
+logger.info("[DB] Loaded ASYNC_DATABASE_URL for host %s", redacted)
 
 engine = create_async_engine(
     DATABASE_URL,
@@ -29,6 +33,7 @@ AsyncSessionLocal = async_session  # alias
 
 Base = declarative_base()
 
+
 @asynccontextmanager
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
@@ -37,14 +42,17 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
 
+
 # 🔥 FastAPI-compatible
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session
 
+
 # ✅ Add init_db() for Alembic-style bootstrapping
 async def init_db() -> None:
     import app.models  # ensure all models are registered with Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         logger.info("[DB] Tables created successfully.")
