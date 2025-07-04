@@ -14,5 +14,5 @@ class Favorite(Base):
     model_id = Column(UUID(as_uuid=True), ForeignKey("models.id"), primary_key=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User", backref="favorites", lazy="joined")
+    user = relationship("User", back_populates="favorites", lazy="joined")
     model = relationship("Model3D", backref="favorited_by", lazy="joined")

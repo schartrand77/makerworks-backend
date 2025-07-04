@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 import httpx
 import os
 
-from app.models import ModelMetadata
+from app.models import ModelMetadata, Model3D
 from app.db.database import get_db
 from app.dependencies.auth import admin_required  # ✅ Ensure proper path
 from app.services.auth_service import log_action
@@ -97,7 +97,9 @@ async def view_user_uploads(
     admin=Depends(admin_required)
 ):
     result = await db.execute(
-        select(ModelMetadata).where(ModelMetadata.user_id == user_id)
+        select(ModelMetadata)
+        .join(Model3D, ModelMetadata.model_id == Model3D.id)
+        .where(Model3D.uploader_id == user_id)
     )
     return result.scalars().all()
 
