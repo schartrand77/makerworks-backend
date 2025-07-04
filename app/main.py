@@ -33,9 +33,9 @@ app.mount(
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(discord.router, prefix="/api/v1")
-app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
+app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 app.include_router(ws_status.router, prefix="/api/v1/ws", tags=["WebSocket"])
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(jwks.router, prefix="", tags=["JWKS"])
 
 

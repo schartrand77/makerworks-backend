@@ -9,7 +9,7 @@ from app.db.database import get_db
 from app.dependencies.auth import admin_required  # ✅ Ensure proper path
 from app.services.auth_service import log_action
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter(prefix="/admin", tags=["admin"])
 
 AUTHENTIK_API = os.getenv("AUTHENTIK_API_URL", "http://authentik:9000")
 AUTHENTIK_TOKEN = os.getenv("AUTHENTIK_API_TOKEN", "")
