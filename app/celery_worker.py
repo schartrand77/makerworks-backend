@@ -1,12 +1,17 @@
 # celery_worker.py — MakerWorks task runner
 
+import os
+
 from celery import Celery
 
 # ─────────────────────────────────────────────────────────────
 # Redis: default local Redis on db 0
 # ─────────────────────────────────────────────────────────────
 
-CELERY_REDIS_URL = "redis://localhost:6379/0"
+# Connection URL for Celery's broker and result backend.
+# Defaults to the docker-compose Redis instance but can be overridden via the
+# CELERY_REDIS_URL environment variable.
+CELERY_REDIS_URL = os.environ.get("CELERY_REDIS_URL", "redis://redis:6379/0")
 
 # ─────────────────────────────────────────────────────────────
 # Celery App
