@@ -1,10 +1,12 @@
 # app/routes/models.py
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+import uuid
 
 from app.db.database import get_db
+from app.models.model3d import Model3D
 from app.models.model_metadata import ModelMetadata
 from app.schemas.models import ModelOut
 from app.schemas.token import TokenData
@@ -28,20 +30,34 @@ async def list_models(
     List all uploaded models.
     If 'mine' is true, only return models uploaded by the current user.
     """
-    query = select(ModelMetadata).order_by(ModelMetadata.uploaded_at.desc())
+    query = (
+        select(ModelMetadata)
+        .join(Model3D, ModelMetadata.model_id == Model3D.id)
+        .order_by(Model3D.uploaded_at.desc())
+    )
 
     if mine:
-        query = query.where(ModelMetadata.uploader == user.sub)
+        uploader = user.sub
+        try:
+            uploader = uuid.UUID(str(uploader))
+        except (TypeError, ValueError):
+            pass
+        query = query.where(Model3D.uploader_id == uploader)
 
     result = await db.execute(query)
     models = result.scalars().all()
 
-    return {
-        "models": [
-            ModelOut.model_validate(m).serialize(role="admin" if "admin" in user.groups else "user")
-            for m in models
-        ]
-    }
+    model_dicts = []
+    for m in models:
+        data = {
+            "id": m.id,
+            "name": m.model.name,
+            "uploader": str(m.model.uploader_id),
+            "uploaded_at": m.model.uploaded_at,
+        }
+        model_dicts.append(ModelOut.model_validate(data).model_dump())
+
+    return {"models": model_dicts}
 
 
 @router.get(
