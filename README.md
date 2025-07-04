@@ -7,6 +7,8 @@ MakerWorks is a FastAPI-based backend that powers the MakerWorks 3D printing pla
 - **Redis + Celery** queue for background tasks
 - **STL analysis** and **thumbnail rendering** using Blender
 - **PostgreSQL** database managed with SQLAlchemy and Alembic
+- **Outbound HTTP requests** handled via the `requests` library
+- **GPU monitoring** powered by NVIDIA's `pynvml`
 
 ## Getting Started
 
@@ -15,6 +17,7 @@ MakerWorks is a FastAPI-based backend that powers the MakerWorks 3D printing pla
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+# installs requests, pynvml and all other dependencies
 cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload
