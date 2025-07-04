@@ -27,6 +27,17 @@ docker-compose up --build
 
 Environment variables are documented in `.env.example` and loaded automatically via `app/config.py`.
 
+### Unraid Deployment
+
+For Unraid users, a Docker template is provided at `unraid/makerworks-backend.xml`.
+Copy this file to `/boot/config/plugins/dockerMan/templates-user/` on your server and
+add a new container through the Unraid web UI.
+
+Make sure the default port `8000` is published and map `/data/uploads` to a
+persistent directory on your array.  Set the required environment variables
+(for example `POSTGRES_USER`, `POSTGRES_PASSWORD`, `REDIS_URL`, and
+`JWT_SECRET_KEY`) to match your setup.
+
 ## Project Layout
 ```
 app/
