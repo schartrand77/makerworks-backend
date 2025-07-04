@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from app.database import engine
+from app.db.database import engine
 from app.models import User, Filament  # Add other tables selectively
 
 logger = logging.getLogger("makerworks.init_subset")
