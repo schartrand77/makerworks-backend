@@ -11,7 +11,7 @@ from app.dependencies import get_current_user
 from app.db.database import get_db
 from app.models import User  # Optional: may remove if not querying user directly
 
-router = APIRouter(prefix="/checkout", tags=["Checkout"])
+router = APIRouter(prefix="/checkout", tags=["checkout"])
 
 # Load environment secrets
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")

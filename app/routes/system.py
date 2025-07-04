@@ -20,7 +20,7 @@ from app.utils.system_info import get_uptime, START_TIME
 from app.schemas.system import SystemStatus
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/system", tags=["System"])
+router = APIRouter(prefix="/system", tags=["system"])
 
 boot_messages = [
     "🧠 MakerWorks Backend online — thinking in polygons.",
