@@ -110,12 +110,16 @@ async def get_discord_config(admin=Depends(admin_required)):
 
 
 @router.post("/discord/config")
-async def update_discord_config(request: Request, admin=Depends(admin_required)):
+async def update_discord_config(
+    request: Request,
+    admin=Depends(admin_required),
+    db: AsyncSession = Depends(get_db),
+):
     data = await request.json()
     discord_config.update({
         "webhook_url": data.get("webhook_url", discord_config["webhook_url"]),
         "channel_id": data.get("channel_id", discord_config["channel_id"]),
         "feed_enabled": data.get("feed_enabled", discord_config["feed_enabled"]),
     })
-    await log_action(admin.sub, "update_discord_config", payload=data)
+    await log_action(admin.sub, "update_discord_config", admin.sub, db)
     return {"status": "ok", "message": "Discord configuration updated."}
