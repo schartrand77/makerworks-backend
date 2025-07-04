@@ -21,8 +21,6 @@ COPY --from=builder /app /app
 # Create runtime folders
 RUN mkdir -p /app/uploads /app/keys
 
-# Copy static frontend build
-COPY ./frontend/dist /usr/share/nginx/html
 
 # Copy NGINX config
 COPY ./nginx.conf /etc/nginx/conf.d/default.conf
