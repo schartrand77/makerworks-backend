@@ -34,9 +34,11 @@ Copy this file to `/boot/config/plugins/dockerMan/templates-user/` on your serve
 add a new container through the Unraid web UI.
 
 Make sure the default port `8000` is published and map `/data/uploads` to a
-persistent directory on your array.  Set the required environment variables
-(for example `POSTGRES_USER`, `POSTGRES_PASSWORD`, `REDIS_URL`, and
-`JWT_SECRET_KEY`) to match your setup.
+persistent directory on your array. Set the required environment variables
+(for example `POSTGRES_USER`, `POSTGRES_PASSWORD`, `REDIS_URL`,
+`CELERY_REDIS_URL`, and `JWT_SECRET_KEY`) to match your setup. `CELERY_REDIS_URL`
+defaults to `redis://redis:6379/0` if unset and controls the Celery broker and
+result backend.
 
 ## Project Layout
 ```
