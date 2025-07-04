@@ -1,17 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
-from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
-import shutil
 import os
-import uuid
+import shutil
 from datetime import datetime
 
-from app.db.database import get_db
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
+
 from app.config import settings
 from app.schemas.auth import TokenPayload
 from app.services.auth_service import get_current_user
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -49,10 +45,10 @@ class AdminUserListStub(BaseModel):
 
 @router.get("/me", response_model=MeResponse, summary="Get current user (OIDC token from Authentik)")
 async def get_me(token: TokenPayload = Depends(get_current_user)):
-    """Returns basic user info derived from the Authentik-issued token."""
+    """Return basic info using the ``preferred_username`` claim for ``username``."""
     return {
         "sub": token.sub,
-        "username": token.username,
+        "username": token.preferred_username,
         "email": token.email,
         "avatar": f"/static/avatars/user_{token.sub}.png",
         "groups": token.groups,
