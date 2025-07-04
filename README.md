@@ -27,18 +27,26 @@ docker-compose up --build
 
 Environment variables are documented in `.env.example` and loaded automatically via `app/config.py`.
 
-### Unraid Deployment
+### Unraid Installation
 
-For Unraid users, a Docker template is provided at `unraid/makerworks-backend.xml`.
-Copy this file to `/boot/config/plugins/dockerMan/templates-user/` on your server and
-add a new container through the Unraid web UI.
+The repository includes a Docker template at `unraid/makerworks-backend.xml`.
+Copy this file to `/boot/config/plugins/dockerMan/templates-user/` so it shows
+up in the Unraid interface.
 
-Make sure the default port `8000` is published and map `/data/uploads` to a
-persistent directory on your array. Set the required environment variables
-(for example `POSTGRES_USER`, `POSTGRES_PASSWORD`, `REDIS_URL`,
-`CELERY_REDIS_URL`, and `JWT_SECRET_KEY`) to match your setup. `CELERY_REDIS_URL`
-defaults to `redis://redis:6379/0` if unset and controls the Celery broker and
-result backend.
+The container publishes port `8000` and stores uploads under
+`/data/uploads`. Map this path to persistent storage (for example
+`/mnt/user/appdata/makerworks/uploads`) and provide the environment variables
+shown in `.env.example` such as `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+`POSTGRES_DB`, `REDIS_URL`, `CELERY_REDIS_URL` and `JWT_SECRET_KEY`.
+`CELERY_REDIS_URL` defaults to `redis://redis:6379/0` if unset and controls the
+Celery broker and result backend.
+
+To pull and run the container through the **Community Apps** plugin:
+
+1. Open the **Apps** tab and search for **MakerWorks Backend**.
+2. Click **Install** to download the image using the template.
+3. Review the environment variables and volume mappings, then apply the
+   changes to start the container.
 
 ## Project Layout
 ```
