@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<Container>
+  <Name>MakerWorks Backend</Name>
+  <Repository>schartrand77/makerworks-backend:latest</Repository>
+  <Registry>https://hub.docker.com/r/schartrand77/makerworks-backend</Registry>
+  <Network>bridge</Network>
+  <WebUI>http://[IP]:[PORT:8000]</WebUI>
+  
+  <Ports>
+    <Port>
+      <HostPort>8000</HostPort>
+      <ContainerPort>8000</ContainerPort>
+      <Protocol>tcp</Protocol>
+    </Port>
+  </Ports>
+
+  <Volumes>
+    <Volume>
+      <HostDir>/mnt/user/appdata/makerworks/uploads</HostDir>
+      <ContainerDir>/data/uploads</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Volumes>
+
+  <Environment>
+    <Variable>
+      <Name>POSTGRES_USER</Name>
+      <Default>jellystat</Default>
+      <Description>PostgreSQL user</Description>
+    </Variable>
+    <Variable>
+      <Name>POSTGRES_PASSWORD</Name>
+      <Default>jellystat</Default>
+      <Description>PostgreSQL password</Description>
+    </Variable>
+    <Variable>
+      <Name>POSTGRES_DB</Name>
+      <Default>makerworks2</Default>
+      <Description>PostgreSQL database</Description>
+    </Variable>
+    <Variable>
+      <Name>REDIS_URL</Name>
+      <Default>redis://localhost:6379/1</Default>
+      <Description>Redis connection string</Description>
+    </Variable>
+    <Variable>
+      <Name>JWT_SECRET_KEY</Name>
+      <Default>changeme</Default>
+      <Description>JWT signing key</Description>
+    </Variable>
+    <Variable>
+      <Name>DATABASE_URL</Name>
+      <Default>postgresql://user:pass@db:5432/makerworks2</Default>
+      <Description>SQLAlchemy database URL</Description>
+    </Variable>
+    <Variable>
+      <Name>ASYNC_DATABASE_URL</Name>
+      <Default>postgresql+asyncpg://user:pass@db:5432/makerworks2</Default>
+      <Description>Async SQLAlchemy database URL</Description>
+    </Variable>
+    <Variable>
+      <Name>STRIPE_SECRET_KEY</Name>
+      <Default></Default>
+      <Description>Stripe secret key</Description>
+    </Variable>
+    <Variable>
+      <Name>STRIPE_WEBHOOK_SECRET</Name>
+      <Default></Default>
+      <Description>Stripe webhook secret</Description>
+    </Variable>
+    <Variable>
+      <Name>DOMAIN</Name>
+      <Default>http://localhost:8000</Default>
+      <Description>Public domain for callbacks</Description>
+    </Variable>
+  </Environment>
+</Container>
