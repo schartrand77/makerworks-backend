@@ -3,7 +3,7 @@ import platform
 import time
 import psutil
 import redis
-import random
+import uuid
 import psycopg2
 import requests
 import logging
@@ -11,19 +11,10 @@ from psycopg2 import OperationalError
 from typing import Optional, List
 from prometheus_client import Gauge, Info
 
-from app.utils.boot_messages import random_boot_message  # ✅ now loaded from external file
+from app.utils.boot_messages import random_boot_message
 
 START_TIME = time.time()
 
-# ─────────── Structured Logger (for imports) ───────────
-logger = logging.getLogger("makerworks")
-logger.setLevel(logging.INFO)
-
-if not logger.hasHandlers():
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
 
 # ─────────── Terminal Colors ───────────
 class Colors:
@@ -35,7 +26,33 @@ class Colors:
     GREY = '\033[90m'
     BOLD = '\033[1m'
 
-_previous_routes: set = set()
+
+# ─────────── Colored Formatter ───────────
+class ColorFormatter(logging.Formatter):
+    LEVEL_COLORS = {
+        logging.DEBUG: Colors.GREY,
+        logging.INFO: Colors.OKGREEN,
+        logging.WARNING: Colors.WARNING,
+        logging.ERROR: Colors.FAIL,
+        logging.CRITICAL: Colors.BOLD + Colors.FAIL,
+    }
+
+    def format(self, record):
+        color = self.LEVEL_COLORS.get(record.levelno, Colors.RESET)
+        message = super().format(record)
+        return f"{color}{message}{Colors.RESET}"
+
+
+# ─────────── Structured Logger ───────────
+logger = logging.getLogger("makerworks")
+logger.setLevel(logging.INFO)
+
+if not logger.hasHandlers():
+    handler = logging.StreamHandler()
+    formatter = ColorFormatter("[%(asctime)s] [%(levelname)s] %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
 
 # ─────────── Prometheus Gauges ───────────
 startup_time_gauge = Gauge("makerworks_startup_seconds", "Time taken to start MakerWorks backend")
@@ -47,12 +64,16 @@ memory_used_gauge = Gauge("makerworks_memory_used_mb", "Memory used (in MB)")
 memory_percent_gauge = Gauge("makerworks_memory_percent", "Percent memory used")
 gpu_info = Info("makerworks_gpu", "GPU detected on system")
 
+_previous_routes: set = set()
+
+
 def check_redis_available(url: str) -> bool:
     try:
         r = redis.Redis.from_url(url, socket_connect_timeout=1)
         return r.ping()
     except Exception:
         return False
+
 
 def check_postgres_available() -> bool:
     try:
@@ -64,32 +85,25 @@ def check_postgres_available() -> bool:
     except OperationalError:
         return False
 
+
 def check_authentik_available() -> bool:
     default_url = "http://authentik:9000/outpost.goauthentik.io/ping"
     fallback_url = "http://192.168.1.170:9000/outpost.goauthentik.io/ping"
     attempted_urls = []
 
-    # Try default
-    try:
-        attempted_urls.append(default_url)
-        resp = requests.get(default_url, timeout=2)
-        if resp.status_code == 204:
-            print(f"{Colors.OKGREEN}🛂 Authentik: Connected at {default_url}{Colors.RESET}", flush=True)
-            return True
-    except Exception as e:
-        print(f"{Colors.GREY}🛂 Authentik: Failed at {default_url} — {type(e).__name__}{Colors.RESET}", flush=True)
+    for url in [default_url, fallback_url]:
+        attempted_urls.append(url)
+        try:
+            resp = requests.get(url, timeout=2)
+            if resp.status_code == 204:
+                logger.info(f"🛂 Authentik: Connected at {url}")
+                return True
+        except Exception as e:
+            logger.debug(f"🛂 Authentik: Failed at {url} — {type(e).__name__}")
 
-    # Try fallback
-    try:
-        attempted_urls.append(fallback_url)
-        resp = requests.get(fallback_url, timeout=2)
-        if resp.status_code == 204:
-            print(f"{Colors.OKGREEN}🛂 Authentik: Connected at {fallback_url}{Colors.RESET}", flush=True)
-            return True
-    except Exception as e:
-        print(f"{Colors.FAIL}🛂 Authentik: Unreachable at both {attempted_urls} — {type(e).__name__}{Colors.RESET}", flush=True)
-
+    logger.error(f"🛂 Authentik: Unreachable at {attempted_urls}")
     return False
+
 
 def detect_gpu() -> str:
     if os.system("nvidia-smi > /dev/null 2>&1") == 0:
@@ -98,47 +112,44 @@ def detect_gpu() -> str:
         return "Apple Metal"
     return "None"
 
+
 def startup_banner(route_count: Optional[int] = None, routes: Optional[List[str]] = None):
-    print(f"{Colors.OKGREEN}🚀 MakerWorks Backend Started{Colors.RESET}", flush=True)
-    print(f"{Colors.WARNING}🖥️  Platform: {platform.system()} {platform.release()}{Colors.RESET}", flush=True)
-    print(f"{Colors.WARNING}🧠 CPU Cores: {os.cpu_count()}{Colors.RESET}", flush=True)
+    logger.info("🚀 MakerWorks Backend Started")
+    logger.info(f"🖥️  Platform: {platform.system()} {platform.release()}")
+    logger.info(f"🧠 CPU Cores: {os.cpu_count()}")
 
     mem = psutil.virtual_memory()
     mem_used_mb = mem.used // (1024 ** 2)
-    print(f"{Colors.WARNING}📦 Memory: {mem_used_mb}MB used / {mem.total // (1024 ** 2)}MB total ({mem.percent}%) {Colors.RESET}", flush=True)
+    logger.info(f"📦 Memory: {mem_used_mb}MB used / {mem.total // (1024 ** 2)}MB total ({mem.percent}%)")
     memory_used_gauge.set(mem_used_mb)
     memory_percent_gauge.set(mem.percent)
 
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
     redis_status = check_redis_available(redis_url)
-    redis_color = Colors.OKGREEN if redis_status else Colors.FAIL
-    print(f"{redis_color}🧱 Redis: {'Connected' if redis_status else 'Unavailable'} ({redis_url}){Colors.RESET}", flush=True)
+    logger.info(f"🧱 Redis: {'Connected' if redis_status else 'Unavailable'} ({redis_url})")
     redis_status_gauge.set(1 if redis_status else 0)
 
     pg_status = check_postgres_available()
-    pg_color = Colors.OKGREEN if pg_status else Colors.FAIL
-    print(f"{pg_color}🗃️  PostgreSQL: {'Connected' if pg_status else 'Unavailable'}{Colors.RESET}", flush=True)
+    logger.info(f"🗃️  PostgreSQL: {'Connected' if pg_status else 'Unavailable'}")
     postgres_status_gauge.set(1 if pg_status else 0)
 
     ak_status = check_authentik_available()
-    ak_color = Colors.OKGREEN if ak_status else Colors.FAIL
-    print(f"{ak_color}🛂 Authentik: {'Available' if ak_status else 'Unavailable'}{Colors.RESET}", flush=True)
+    logger.info(f"🛂 Authentik: {'Available' if ak_status else 'Unavailable'}")
     authentik_status_gauge.set(1 if ak_status else 0)
 
     gpu = detect_gpu()
-    gpu_color = Colors.OKGREEN if gpu != "None" else Colors.GREY
-    print(f"{gpu_color}🎮 GPU: {gpu}{Colors.RESET}", flush=True)
+    logger.info(f"🎮 GPU: {gpu}")
     gpu_info.info({'type': gpu})
 
     if route_count is not None:
-        print(f"{Colors.CYAN}📚 Registered Routes: {route_count}{Colors.RESET}", flush=True)
+        logger.info(f"📚 Registered Routes: {route_count}")
         route_count_gauge.set(route_count)
 
     global _previous_routes
     _previous_routes = set(routes or [])
 
     elapsed = time.time() - START_TIME
-    print(f"{Colors.CYAN}⏱️  Startup Time: {elapsed:.2f}s{Colors.RESET}", flush=True)
+    logger.info(f"⏱️  Startup Time: {elapsed:.2f}s")
     startup_time_gauge.set(elapsed)
 
-    print(f"{Colors.BOLD}{Colors.CYAN}{random_boot_message()}{Colors.RESET}", flush=True)
+    logger.info(f"{random_boot_message()}")

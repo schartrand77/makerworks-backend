@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict
 import json
 import uuid
+import logging
 
 import httpx
 from jose import jwt
@@ -14,8 +15,10 @@ from fastapi import HTTPException, status
 from app.config.settings import settings
 from app.services.redis_service import get_redis
 
+logger = logging.getLogger(__name__)
+
 JWKS_CACHE_KEY = "jwks:authentik"
-JWKS_TTL_SECONDS = 6 * 60 * 60  # 6 hours
+JWKS_TTL_SECONDS = int(timedelta(hours=6).total_seconds())  # 6 hours
 
 
 # ──────────────────────────────────────────────────────────────
@@ -45,7 +48,7 @@ def create_access_token(
     jti = str(uuid.uuid4())
 
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),  # ensure UUID is string
         "email": email,
         "role": role,
         "jti": jti,
@@ -74,9 +77,10 @@ async def get_jwks() -> JsonWebKey:
     try:
         cached = await redis.get(JWKS_CACHE_KEY)
         if cached:
+            logger.debug("[JWKS] Loaded JWKS from Redis cache")
             return JsonWebKey.import_key_set(json.loads(cached))
     except Exception as e:
-        print(f"[JWKS] Redis fetch failed: {e}")
+        logger.warning(f"[JWKS] Redis fetch failed: {e}")
 
     try:
         jwks_url = f"{settings.authentik_issuer.rstrip('/')}/.well-known/jwks.json"
@@ -87,8 +91,9 @@ async def get_jwks() -> JsonWebKey:
 
         try:
             await redis.set(JWKS_CACHE_KEY, json.dumps(jwks_json), ex=JWKS_TTL_SECONDS)
+            logger.debug("[JWKS] Cached JWKS in Redis")
         except Exception as e:
-            print(f"[JWKS] Redis set failed: {e}")
+            logger.warning(f"[JWKS] Redis set failed: {e}")
 
         return JsonWebKey.import_key_set(jwks_json)
 
@@ -110,11 +115,13 @@ async def verify_token_rs256(token: str) -> Dict:
                 "iss": {"value": settings.authentik_issuer},
                 "aud": {"value": settings.auth_audience},
                 "exp": {"essential": True},
+                "sub": {"essential": True},
             },
         )
         claims.validate()
         return claims
     except Exception as e:
+        logger.warning(f"[JWT] Verification failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid JWT: {e}",

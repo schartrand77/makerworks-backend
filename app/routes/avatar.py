@@ -5,6 +5,7 @@ from app.db.database import get_db
 from app.models import User
 from app.dependencies.auth import get_user_from_headers
 from app.schemas.token import TokenData
+from app.schemas.user import AvatarUploadResponse
 from app.config.settings import settings
 from uuid import uuid4
 from datetime import datetime
@@ -13,9 +14,9 @@ from PIL import Image
 import shutil
 import logging
 import os
-import magic  # requires: pip install python-magic
 
 router = APIRouter()
+
 AVATAR_DIR: Path = Path(settings.avatar_dir)
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
 MAX_AVATAR_SIZE = (512, 512)
@@ -42,7 +43,7 @@ ALLOWED_IMAGE_MIME = {
 # ─────────────────────────────────────────────────────────────
 # POST /users/avatar
 # ─────────────────────────────────────────────────────────────
-@router.post("/users/avatar")
+@router.post("/users/avatar", response_model=AvatarUploadResponse)
 async def upload_avatar(
     file: UploadFile = File(...),
     token: TokenData = Depends(get_user_from_headers),
@@ -96,18 +97,17 @@ async def upload_avatar(
         except Exception as e:
             logging.warning(f"[AVATAR] Failed to delete old avatar: {e}")
 
-    # Save new URLs
+    # Save new URLs & timestamp
     user.avatar_url = f"/uploads/avatars/{avatar_filename}"
     user.avatar_updated_at = datetime.utcnow()
     db.commit()
+    db.refresh(user)
 
-    return JSONResponse(
-        {
-            "status": "ok",
-            "avatar_url": f"{BASE_URL}{user.avatar_url}?t={int(user.avatar_updated_at.timestamp())}",
-            "thumbnail_url": f"{BASE_URL}/uploads/avatars/{thumb_filename}?t={int(user.avatar_updated_at.timestamp())}",
-            "uploaded_at": user.avatar_updated_at.isoformat(),
-        }
+    return AvatarUploadResponse(
+        status="ok",
+        avatar_url=f"{BASE_URL}{user.avatar_url}?t={int(user.avatar_updated_at.timestamp())}",
+        thumbnail_url=f"{BASE_URL}/uploads/avatars/{thumb_filename}?t={int(user.avatar_updated_at.timestamp())}",
+        uploaded_at=user.avatar_updated_at
     )
 
 # ─────────────────────────────────────────────────────────────
@@ -120,9 +120,11 @@ async def get_avatar_url(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, detail="Avatar not found")
 
     thumb_url = user.avatar_url.replace(".", "_thumb.")
+    ts = int(user.avatar_updated_at.timestamp()) if user.avatar_updated_at else 0
+
     return JSONResponse(
         {
-            "avatar_url": f"{BASE_URL}{user.avatar_url}?t={int(user.avatar_updated_at.timestamp())}",
-            "thumbnail_url": f"{BASE_URL}{thumb_url}?t={int(user.avatar_updated_at.timestamp())}"
+            "avatar_url": f"{BASE_URL}{user.avatar_url}?t={ts}",
+            "thumbnail_url": f"{BASE_URL}{thumb_url}?t={ts}"
         }
     )

@@ -5,6 +5,10 @@ from uuid import UUID
 
 
 class UserOut(BaseModel):
+    """
+    Outbound user schema for API responses.
+    Aligns with frontend UserProfile type.
+    """
     id: UUID
     email: EmailStr
     username: str
@@ -15,7 +19,9 @@ class UserOut(BaseModel):
     created_at: datetime
     last_login: Optional[datetime]
     avatar_url: Optional[HttpUrl]
+    thumbnail_url: Optional[HttpUrl]  # NEW: optional thumbnail if stored
     avatar_updated_at: Optional[datetime]
+    language: Optional[str]  # NEW: optional user language preference
 
     @field_serializer("id")
     def serialize_id(self, v: UUID, _info) -> str:
@@ -35,8 +41,13 @@ class UserOut(BaseModel):
 
 
 class UpdateUserProfile(BaseModel):
+    """
+    Inbound user profile updates.
+    Fields are optional and validated.
+    """
     name: Optional[str]
     bio: Optional[str]
+    language: Optional[str]  # NEW: allow updating language
     avatar_url: Optional[HttpUrl] = None  # Optional frontend-provided override
 
     model_config = {

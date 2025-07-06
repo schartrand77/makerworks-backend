@@ -38,11 +38,16 @@ RUN apt-get update && apt-get install -y \
 # Copy Python + Poetry deps from build stage
 COPY --from=builder /usr/local /usr/local
 
-# Copy source code
+# Copy application source code
 COPY . .
 
-# Create necessary runtime dirs
-RUN mkdir -p /app/uploads /app/keys
+# Ensure required runtime directories exist
+RUN mkdir -p /app/uploads /app/keys \
+  && chmod -R 700 /app/keys
+
+# Copy RSA private key into image (adjust path if needed)
+# Optional: uncomment this if you keep a key in the repo
+# COPY app/keys/private.pem /app/keys/private.pem
 
 # Expose API port
 EXPOSE 8000

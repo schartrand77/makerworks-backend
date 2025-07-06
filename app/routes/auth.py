@@ -1,14 +1,14 @@
 # app/routes/auth.py
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from passlib.context import CryptContext
 
-from app.schemas.auth import SignupRequest, AuthResponse, UserOut
+from app.schemas.auth import SignupRequest, SigninRequest, UserOut
 from app.models.models import User
 from app.db.session import get_db
-from app.services.token_service import create_access_token  # ✅ fixed import
+from app.services.token_service import create_access_token
 from app.dependencies.auth import get_current_user
 from app.utils.logging import logger
 
@@ -16,7 +16,7 @@ router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-@router.post("/signup", response_model=AuthResponse)
+@router.post("/signup")
 async def signup(payload: SignupRequest, request: Request, db: AsyncSession = Depends(get_db)):
     logger.debug("[SignUp] Received payload: %s", payload.dict())
 
@@ -41,40 +41,60 @@ async def signup(payload: SignupRequest, request: Request, db: AsyncSession = De
     token = create_access_token(user_id=user.id, email=user.email)
     logger.info("[SignUp] Success for: %s", user.email)
 
-    return AuthResponse(**user.to_dict(), token=token)
+    return {
+        "user": UserOut(**user.to_dict()),
+        "token": token
+    }
 
 
-@router.post("/signin", response_model=AuthResponse)
-async def signin(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
-    logger.debug("[SignIn] Attempt for: %s", payload.email)
+@router.post("/signin")
+async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
+    logger.debug("[SignIn] Attempt for: %s", payload.email_or_username)
 
-    result = await db.execute(select(User).where(User.email == payload.email))
+    result = await db.execute(
+        select(User).where(
+            or_(
+                User.email == payload.email_or_username,
+                User.username == payload.email_or_username
+            )
+        )
+    )
     user = result.scalar_one_or_none()
 
     if not user or not pwd_context.verify(payload.password, user.password):
-        logger.warning("[SignIn] Failed for %s", payload.email)
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        logger.warning("[SignIn] Failed for %s", payload.email_or_username)
+        raise HTTPException(status_code=401, detail="Authentication failed")
 
     token = create_access_token(user_id=user.id, email=user.email)
     logger.info("[SignIn] Success for: %s", user.username)
 
-    return AuthResponse(**user.to_dict(), token=token)
+    return {
+        "user": UserOut(**user.to_dict()),
+        "token": token
+    }
 
 
-# 🔗 New /login route, alias for /signin
-@router.post("/login", response_model=AuthResponse)
-async def login(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
-    logger.debug("[Login] Delegating to /signin for: %s", payload.email)
+@router.post("/login")
+async def login(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
+    logger.debug("[Login] Delegating to /signin for: %s", payload.email_or_username)
     return await signin(payload, db)
 
 
-@router.get("/me", response_model=AuthResponse)
+@router.get("/me")
 async def get_me(current_user: User = Depends(get_current_user)):
     logger.debug("[Me] Authenticated as: %s", current_user.email)
-    return AuthResponse(**current_user.to_dict())
+
+    return {
+        "user": UserOut(**current_user.to_dict()),
+        "token": None
+    }
 
 
-@router.get("/debug", response_model=AuthResponse)
+@router.get("/debug")
 async def debug_me(current_user: User = Depends(get_current_user)):
     logger.debug("[Debug] Testing serialization for user: %s", current_user.email)
-    return AuthResponse(**current_user.to_dict(), token="debug-token")
+
+    return {
+        "user": UserOut(**current_user.to_dict()),
+        "token": "debug-token"
+    }

@@ -33,7 +33,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4, nullable=False)
     email = Column(String, nullable=False, unique=True)
     username = Column(String, nullable=False, unique=True)
-    hashed_password = Column(String, nullable=False)
+    hashed_password = Column(String(128), nullable=False)  # enforce max 128 chars in DB
 
     avatar = Column(String, nullable=True)
     bio = Column(Text, nullable=True)
@@ -46,6 +46,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime)
 
+    # relationships ...
     models = relationship("ModelMetadata", back_populates="user", cascade="all, delete-orphan")
     favorites = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
@@ -56,6 +57,16 @@ class User(Base):
         super().__init__(**kwargs)
         if password:
             self.hashed_password = password
+
+    @validates("hashed_password")
+    def validate_password(self, key, value):
+        if not value:
+            raise ValueError("Password cannot be empty.")
+        if len(value) < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        if len(value) > 128:
+            raise ValueError("Password cannot exceed 128 characters.")
+        return value
 
     def __repr__(self):
         return f"<User id={self.id} username={self.username} role={self.role}>"
