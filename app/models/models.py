@@ -1,21 +1,22 @@
 # app/models/models.py
 
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Boolean,
-    DateTime,
-    Float,
-    Text,
-    JSON,
-    ForeignKey,
-    UniqueConstraint,
-)
-from sqlalchemy.orm import relationship, validates
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship, validates
 
 from app.db.base import Base
 
@@ -30,7 +31,13 @@ class User(Base):
         UniqueConstraint("username", name="uq_user_username"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4, nullable=False)
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        default=uuid.uuid4,
+        nullable=False,
+    )
     email = Column(String, nullable=False, unique=True)
     username = Column(String, nullable=False, unique=True)
     hashed_password = Column(String(128), nullable=False)  # enforce max 128 chars in DB
@@ -47,10 +54,18 @@ class User(Base):
     last_login = Column(DateTime)
 
     # relationships ...
-    models = relationship("ModelMetadata", back_populates="user", cascade="all, delete-orphan")
-    favorites = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
-    audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
-    estimates = relationship("Estimate", back_populates="user", cascade="all, delete-orphan")
+    models = relationship(
+        "ModelMetadata", back_populates="user", cascade="all, delete-orphan"
+    )
+    favorites = relationship(
+        "Favorite", back_populates="user", cascade="all, delete-orphan"
+    )
+    audit_logs = relationship(
+        "AuditLog", back_populates="user", cascade="all, delete-orphan"
+    )
+    estimates = relationship(
+        "Estimate", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __init__(self, **kwargs):
         password = kwargs.pop("password", None)
@@ -118,7 +133,9 @@ class ModelMetadata(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="models")
-    estimates = relationship("Estimate", back_populates="model", cascade="all, delete-orphan")
+    estimates = relationship(
+        "Estimate", back_populates="model", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<ModelMetadata id={self.id} name={self.name} uploader={self.uploader}>"
@@ -152,16 +169,27 @@ class Filament(Base):
 
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
-    group = Column(String, nullable=False)
+    type = Column(String, nullable=False)
+    subtype = Column(String, nullable=True)
+    surface = Column(String, nullable=True)
+    texture = Column(String, nullable=True)
+    color = Column(String, nullable=False)
+    color_name = Column(String, nullable=True)
     price_per_kg = Column(Float, nullable=False)
-    color_hex = Column(String, nullable=False)
+    currency = Column(String, default="USD")
     description = Column(Text)
+    is_biodegradable = Column(Boolean, nullable=True)
     is_active = Column(Boolean, default=True)
 
-    pricing = relationship("FilamentPricing", back_populates="filament", cascade="all, delete-orphan")
+    pricing = relationship(
+        "FilamentPricing", back_populates="filament", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
-        return f"<Filament id={self.id} name={self.name} group={self.group}>"
+        return (
+            f"<Filament id={self.id} name={self.name} type={self.type}"
+            f" color={self.color}>"
+        )
 
 
 # ========================
@@ -230,7 +258,9 @@ class Estimate(Base):
     model = relationship("ModelMetadata", back_populates="estimates")
 
     def __repr__(self):
-        return f"<Estimate id={self.id} user_id={self.user_id} model_id={self.model_id}>"
+        return (
+            f"<Estimate id={self.id} user_id={self.user_id} model_id={self.model_id}>"
+        )
 
 
 # ========================

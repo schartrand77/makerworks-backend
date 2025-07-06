@@ -1,14 +1,14 @@
 # app/routes/filaments.py
 
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List
 
-from app.schemas.filaments import FilamentCreate, FilamentUpdate, FilamentOut
-from app.models import Filament, User
 from app.db.session import get_async_db
-from app.dependencies.auth import get_user_from_headers, assert_user_is_admin
+from app.dependencies.auth import assert_user_is_admin, get_user_from_headers
+from app.models import Filament, User
+from app.schemas.filaments import FilamentCreate, FilamentOut, FilamentUpdate
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ router = APIRouter()
     "/",
     summary="List all active filaments",
     status_code=status.HTTP_200_OK,
-    response_model=List[FilamentOut],
+    response_model=list[FilamentOut],
     response_model_exclude_none=True,
 )
 async def list_filaments(db: AsyncSession = Depends(get_async_db)):
@@ -44,7 +44,7 @@ async def add_filament(
     user: User = Depends(get_user_from_headers),
 ):
     assert_user_is_admin(user)
-    new_filament = Filament(**filament.dict(by_alias=True))
+    new_filament = Filament(**filament.dict())
     db.add(new_filament)
     await db.commit()
     await db.refresh(new_filament)
@@ -72,9 +72,11 @@ async def update_filament(
     filament = result.scalar_one_or_none()
 
     if not filament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filament not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Filament not found."
+        )
 
-    for field, value in updates.dict(exclude_unset=True, by_alias=True).items():
+    for field, value in updates.dict(exclude_unset=True).items():
         setattr(filament, field, value)
 
     await db.commit()
@@ -100,7 +102,9 @@ async def delete_filament(
     filament = result.scalar_one_or_none()
 
     if not filament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filament not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Filament not found."
+        )
 
     filament.is_active = False
     await db.commit()
@@ -127,12 +131,14 @@ async def get_filament_picker_data(db: AsyncSession = Depends(get_async_db)):
             picker[category] = {}
         if subtype not in picker[category]:
             picker[category][subtype] = {"colors": []}
-        picker[category][subtype]["colors"].append({
-            "id": f.id,
-            "name": f.color_name or f.color,
-            "hex": f.color,
-            "pricePerKg": f.price_per_kg,
-            "isBiodegradable": f.is_biodegradable or False,
-        })
+        picker[category][subtype]["colors"].append(
+            {
+                "id": f.id,
+                "name": f.color_name or f.color,
+                "hex": f.color,
+                "pricePerKg": f.price_per_kg,
+                "isBiodegradable": f.is_biodegradable or False,
+            }
+        )
 
     return picker
