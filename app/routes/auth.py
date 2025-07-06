@@ -61,6 +61,13 @@ async def signin(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
     return AuthResponse(**user.to_dict(), token=token)
 
 
+# 🔗 New /login route, alias for /signin
+@router.post("/login", response_model=AuthResponse)
+async def login(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
+    logger.debug("[Login] Delegating to /signin for: %s", payload.email)
+    return await signin(payload, db)
+
+
 @router.get("/me", response_model=AuthResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     logger.debug("[Me] Authenticated as: %s", current_user.email)
