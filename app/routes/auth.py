@@ -61,7 +61,7 @@ async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
     )
     user = result.scalar_one_or_none()
 
-    if not user or not pwd_context.verify(payload.password, user.password):
+    if not user or not pwd_context.verify(payload.password, user.hashed_password):
         logger.warning("[SignIn] Failed for %s", payload.email_or_username)
         raise HTTPException(status_code=401, detail="Authentication failed")
 
