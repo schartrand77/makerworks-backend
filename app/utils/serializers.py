@@ -1,3 +1,6 @@
+from app.models import ModelMetadata
+
+
 def model_to_dict(model: ModelMetadata):
     return {
         "id": model.id,
