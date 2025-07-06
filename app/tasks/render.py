@@ -1,7 +1,10 @@
 from app.worker import celery_app
+import logging
+
+logger = logging.getLogger(__name__)
 
 @celery_app.task
 def generate_gcode(model_id: int, estimate_id: int):
-    print(f"[TASK] Generating G-code for model {model_id}, estimate {estimate_id}")
+    logger.info("[TASK] Generating G-code for model %s, estimate %s", model_id, estimate_id)
     # TODO: Actual G-code rendering logic
     return True

@@ -1,8 +1,13 @@
 # scripts/seed_filaments.py
 
 import asyncio
+import logging
+
 from app.models import Filament
 from app.db.session import async_session_maker
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("seed-filaments")
 
 
 async def seed_filaments():
@@ -46,7 +51,7 @@ async def seed_filaments():
 
         db.add_all(filaments)
         await db.commit()
-        print("✅ Seeded filaments successfully.")
+        logger.info("✅ Seeded filaments successfully.")
 
 
 if __name__ == "__main__":

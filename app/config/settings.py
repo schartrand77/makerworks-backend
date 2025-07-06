@@ -72,4 +72,3 @@ def get_settings():
 
 
 settings = get_settings()
-print("[Debug] Effective CORS origins:", settings.cors_origins)

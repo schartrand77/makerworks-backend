@@ -43,7 +43,7 @@ def safe_mkdir(path):
     try:
         Path(path).mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        print(f"[ERROR] Could not create directory {path}: {e}")
+        logging.error(f"[ERROR] Could not create directory {path}: {e}")
         raise HTTPException(status_code=500, detail=f"Upload directory error: {e}")
 
 safe_mkdir(AVATAR_DIR)

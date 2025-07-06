@@ -9,6 +9,7 @@ from sqlalchemy.future import select
 from passlib.context import CryptContext
 from redis.asyncio import Redis
 import uuid
+import logging
 
 from app.db.database import get_db
 from app.models.models import User, AuditLog
@@ -16,6 +17,8 @@ from app.config import settings
 from app.services.redis_service import get_redis
 from app.services.token_blacklist import is_token_blacklisted
 from app.services.token_service import create_access_token as issue_token, verify_token_rs256
+
+logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────────────────────────────────────
 # AUTH CONSTANTS
@@ -96,7 +99,7 @@ async def log_action(
     target_user_id: int,
     db: AsyncSession
 ):
-    print(f"[log_action] Admin {admin_id} performed '{action}' on user {target_user_id}")
+    logger.info("[log_action] Admin %s performed '%s' on user %s", admin_id, action, target_user_id)
     entry = AuditLog(
         admin_id=admin_id,
         action=action,
