@@ -27,7 +27,7 @@ BLENDER_EXECUTABLE = "/usr/bin/blender"  # <-- Change if Blender is elsewhere
 # ─────────────────────────────────────────────
 def main():
     if len(sys.argv) != 4:
-        print("Usage: extract_metadata.py <model_path> <json_output> <preview_output>")
+        logger.error("Usage: extract_metadata.py <model_path> <json_output> <preview_output>")
         sys.exit(1)
 
     model_path = sys.argv[1]

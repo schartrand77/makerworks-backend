@@ -2,6 +2,7 @@
 
 import os
 import stripe
+import logging
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -11,6 +12,8 @@ from app.db.database import get_db
 from app.models import User
 from app.models import Estimate
 from app.tasks.render import generate_gcode
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/checkout", tags=["Checkout"])
 
@@ -64,10 +67,10 @@ def create_checkout_session(
                 "estimate_id": str(data.estimate_id),
             },
         )
-        print(f"✅ Stripe session created: {session.id}")
+        logger.info("✅ Stripe session created: %s", session.id)
         return {"id": session.id, "url": session.url}
     except Exception as e:
-        print(f"❌ Stripe session error: {e}")
+        logger.error("❌ Stripe session error: %s", e)
         raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
 
 
@@ -80,14 +83,14 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     sig = request.headers.get("stripe-signature")
 
     if not sig or not WEBHOOK_SECRET:
-        print("⚠️ Missing Stripe signature or webhook secret")
+        logger.warning("⚠️ Missing Stripe signature or webhook secret")
         raise HTTPException(status_code=400, detail="Missing webhook signature or secret")
 
     try:
         event = stripe.Webhook.construct_event(payload, sig, WEBHOOK_SECRET)
-        print(f"📡 Webhook event received: {event['type']}")
+        logger.info("📡 Webhook event received: %s", event['type'])
     except stripe.error.SignatureVerificationError:
-        print("❌ Stripe webhook signature invalid")
+        logger.error("❌ Stripe webhook signature invalid")
         raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
     if event["type"] == "checkout.session.completed":
@@ -98,7 +101,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         model_id = metadata.get("model_id")
         estimate_id = metadata.get("estimate_id")
 
-        print(f"✅ Payment complete for user {user_id}, model {model_id}, estimate {estimate_id}")
+        logger.info("✅ Payment complete for user %s, model %s, estimate %s", user_id, model_id, estimate_id)
 
         # ───── Update Estimate in DB ─────
         try:
@@ -106,17 +109,17 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             if est:
                 est.is_paid = True
                 await db.commit()
-                print(f"🧾 Estimate {estimate_id} marked as paid")
+                logger.info("🧾 Estimate %s marked as paid", estimate_id)
             else:
-                print(f"⚠️ Estimate {estimate_id} not found in DB")
+                logger.warning("⚠️ Estimate %s not found in DB", estimate_id)
         except Exception as e:
-            print(f"❌ DB update failed: {e}")
+            logger.error("❌ DB update failed: %s", e)
 
         # ───── Enqueue G-code Generation Task ─────
         try:
             generate_gcode.delay(int(model_id), int(estimate_id))
-            print(f"📤 Celery: G-code generation task enqueued")
+            logger.info("📤 Celery: G-code generation task enqueued")
         except Exception as e:
-            print(f"❌ Celery enqueue failed: {e}")
+            logger.error("❌ Celery enqueue failed: %s", e)
 
     return {"status": "success"}
