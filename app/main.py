@@ -59,6 +59,11 @@ async def log_startup_system_info():
     for key, value in snapshot.items():
         logger.info(f"   {key}: {value}")
 
+@app.on_event("startup")
+async def create_initial_admin():
+    from app.utils.initial_admin import ensure_initial_admin
+    await ensure_initial_admin()
+
 # ─── Route Registry Debug ────────────────────────────────────
 @app.get("/debug/routes", include_in_schema=False)
 async def debug_routes():
