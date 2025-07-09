@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from typing import Optional
-import shutil
-import os
-import uuid
 from datetime import datetime
+from pathlib import Path
+from typing import Optional
+from pydantic import BaseModel
+
+import shutil
+import logging
 
 from app.db.database import get_db
 from app.config.settings import settings
@@ -14,11 +14,16 @@ from app.schemas.token import TokenData
 from app.dependencies.auth import get_user_from_headers, get_current_user
 from app.models import User
 from app.schemas.user import UpdateUserProfile, UserOut
-from pydantic import BaseModel, field_serializer
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-AVATAR_DIR = os.path.join(settings.upload_dir, "avatars")
+AVATAR_DIR = Path(settings.upload_dir) / "avatars"
+AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024  # 5MB
+ALLOWED_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp"]
+
 
 # ─────────────────────────────────────────────────────────────
 # Response Schemas
@@ -52,7 +57,7 @@ class AdminUserListStub(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────
-# GET /users/me (from Authentik token)
+# GET /users/me
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/me", response_model=MeResponse, summary="Get current user (OIDC token from Authentik)")
@@ -68,7 +73,7 @@ async def get_me(token: TokenData = Depends(get_user_from_headers)):
 
 
 # ─────────────────────────────────────────────────────────────
-# PATCH /users/me (update profile info)
+# PATCH /users/me
 # ─────────────────────────────────────────────────────────────
 
 @router.patch("/me", response_model=UserOut, summary="Update user profile (bio, etc.)")
@@ -85,7 +90,7 @@ async def update_profile(
 
 
 # ─────────────────────────────────────────────────────────────
-# POST /users/avatar (store using Authentik UUID)
+# POST /users/avatar
 # ─────────────────────────────────────────────────────────────
 
 @router.post("/avatar", response_model=AvatarUploadResponse, summary="Upload avatar image (stored by sub UUID)")
@@ -94,27 +99,36 @@ async def upload_avatar(
     token: TokenData = Depends(get_user_from_headers)
 ):
     """Store a user avatar using their Authentik `sub` as file identifier."""
-    os.makedirs(AVATAR_DIR, exist_ok=True)
+    ext = Path(file.filename).suffix.lower()
 
-    ext = os.path.splitext(file.filename)[-1].lower()
-    if ext not in [".png", ".jpg", ".jpeg", ".webp"]:
-        raise HTTPException(status_code=400, detail="Unsupported image format")
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported image format: {ext}")
 
-    filename = f"user_{token.sub}{ext}"
-    full_path = os.path.join(AVATAR_DIR, filename)
+    contents = await file.read()
 
-    with open(full_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    if len(contents) > MAX_AVATAR_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="Avatar file too large (max 5 MB)")
 
-    return {
-        "status": "uploaded",
-        "avatar_url": f"/static/avatars/{filename}",
-        "uploaded_at": datetime.utcnow().isoformat()
-    }
+    avatar_filename = f"user_{token.sub}{ext}"
+    avatar_path = AVATAR_DIR / avatar_filename
+
+    try:
+        with avatar_path.open("wb") as buffer:
+            buffer.write(contents)
+        logger.info(f"Avatar uploaded for user {token.sub}: {avatar_path}")
+    except Exception as e:
+        logger.error(f"Failed to save avatar for user {token.sub}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save avatar")
+
+    return AvatarUploadResponse(
+        status="uploaded",
+        avatar_url=f"/static/avatars/{avatar_filename}",
+        uploaded_at=datetime.utcnow().isoformat()
+    )
 
 
 # ─────────────────────────────────────────────────────────────
-# GET /users/username/check (placeholder — Authentik handles usernames)
+# GET /users/username/check
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/username/check", response_model=UsernameCheckResponse, summary="Stub: check username availability")
@@ -124,7 +138,7 @@ async def check_username():
 
 
 # ─────────────────────────────────────────────────────────────
-# GET /users (admin-only stub — use Authentik API for user list)
+# GET /users (admin-only stub)
 # ─────────────────────────────────────────────────────────────
 
 @router.get("/", response_model=AdminUserListStub, summary="Admin-only: stub for full user list")
@@ -142,8 +156,8 @@ async def get_all_users(token: TokenData = Depends(get_user_from_headers)):
 @router.get("/avatar/{user_sub}", response_model=AvatarLookupResponse, summary="Lookup avatar by Authentik UUID")
 async def get_avatar_url(user_sub: str):
     """Returns the URL of a locally stored avatar for a given user UUID (`sub`)."""
-    for ext in [".png", ".jpg", ".jpeg", ".webp"]:
-        candidate = os.path.join(AVATAR_DIR, f"user_{user_sub}{ext}")
-        if os.path.exists(candidate):
-            return {"avatar_url": f"/static/avatars/user_{user_sub}{ext}"}
+    for ext in ALLOWED_EXTENSIONS:
+        candidate = AVATAR_DIR / f"user_{user_sub}{ext}"
+        if candidate.exists():
+            return {"avatar_url": f"/static/avatars/{candidate.name}"}
     raise HTTPException(status_code=404, detail="Avatar not found")

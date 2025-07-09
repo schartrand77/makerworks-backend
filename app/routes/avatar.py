@@ -13,7 +13,8 @@ from pathlib import Path
 from PIL import Image
 import shutil
 import logging
-import os
+import tempfile
+import io
 
 router = APIRouter()
 
@@ -21,18 +22,7 @@ AVATAR_DIR: Path = Path(settings.avatar_dir)
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
 MAX_AVATAR_SIZE = (512, 512)
 THUMB_SIZE = (128, 128)
-
-# ─────────────────────────────────────────────────────────────
-# Init
-# ─────────────────────────────────────────────────────────────
-def safe_mkdir(path: Path):
-    try:
-        Path(path).mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logging.error(f"[AVATAR] Could not create avatar dir {path}: {e}")
-        raise HTTPException(500, f"Avatar storage error: {e}")
-
-safe_mkdir(AVATAR_DIR)
+MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 ALLOWED_IMAGE_MIME = {
     "image/png": ".png",
@@ -40,9 +30,15 @@ ALLOWED_IMAGE_MIME = {
     "image/webp": ".webp",
 }
 
-# ─────────────────────────────────────────────────────────────
-# POST /users/avatar
-# ─────────────────────────────────────────────────────────────
+def safe_mkdir(path: Path):
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logging.error(f"[AVATAR] Could not create avatar dir {path}: {e}")
+        raise HTTPException(500, f"Avatar storage error: {e}")
+
+safe_mkdir(AVATAR_DIR)
+
 @router.post("/users/avatar", response_model=AvatarUploadResponse)
 async def upload_avatar(
     file: UploadFile = File(...),
@@ -54,77 +50,80 @@ async def upload_avatar(
     # Validate MIME type
     content_type = file.content_type
     if content_type not in ALLOWED_IMAGE_MIME:
-        raise HTTPException(400, detail="Unsupported avatar image type")
+        raise HTTPException(400, detail=f"Unsupported image type: {content_type}")
+
+    # Check file size
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(400, detail=f"Avatar file too large (max {MAX_FILE_SIZE_BYTES//1024//1024} MB)")
 
     ext = ALLOWED_IMAGE_MIME[content_type]
     avatar_uuid = uuid4().hex
-    avatar_filename = f"{user_id}_{avatar_uuid}{ext}"
-    thumb_filename = f"{user_id}_{avatar_uuid}_thumb{ext}"
+    base_name = f"{user_id}_{avatar_uuid}"
+    avatar_filename = f"{base_name}{ext}"
+    thumb_filename = f"{base_name}_thumb{ext}"
     save_path = AVATAR_DIR / avatar_filename
     thumb_path = AVATAR_DIR / thumb_filename
 
-    # Open and resize image
     try:
-        image = Image.open(file.file)
+        image = Image.open(io.BytesIO(contents))
         image = image.convert("RGB")
-
-        # Save full-size avatar
         image.thumbnail(MAX_AVATAR_SIZE)
-        image.save(save_path)
 
-        # Save thumbnail
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext, dir=AVATAR_DIR) as tmp:
+            image.save(tmp.name, optimize=True, quality=85)
+            Path(tmp.name).replace(save_path)
+
         thumb = image.copy()
         thumb.thumbnail(THUMB_SIZE)
-        thumb.save(thumb_path)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext, dir=AVATAR_DIR) as tmp_thumb:
+            thumb.save(tmp_thumb.name, optimize=True, quality=85)
+            Path(tmp_thumb.name).replace(thumb_path)
 
     except Exception as e:
         logging.error(f"[AVATAR] Failed to process image: {e}")
         raise HTTPException(500, detail="Failed to process avatar image")
 
-    # Fetch user
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
 
-    # Delete previous avatar + thumbnail
     if user.avatar_url:
         try:
-            old_file = Path(settings.avatar_dir) / Path(user.avatar_url).name
-            old_thumb = old_file.parent / f"{old_file.stem}_thumb{old_file.suffix}"
+            old_file = AVATAR_DIR / Path(user.avatar_url).name
+            old_thumb = old_file.with_name(f"{old_file.stem}_thumb{old_file.suffix}")
             for f in [old_file, old_thumb]:
                 if f.exists():
                     f.unlink()
         except Exception as e:
             logging.warning(f"[AVATAR] Failed to delete old avatar: {e}")
 
-    # Save new URLs & timestamp
     user.avatar_url = f"/uploads/avatars/{avatar_filename}"
     user.avatar_updated_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
 
+    ts = int(user.avatar_updated_at.timestamp())
+
     return AvatarUploadResponse(
         status="ok",
-        avatar_url=f"{BASE_URL}{user.avatar_url}?t={int(user.avatar_updated_at.timestamp())}",
-        thumbnail_url=f"{BASE_URL}/uploads/avatars/{thumb_filename}?t={int(user.avatar_updated_at.timestamp())}",
-        uploaded_at=user.avatar_updated_at
+        avatar_url=f"{BASE_URL}{user.avatar_url}?t={ts}",
+        thumbnail_url=f"{BASE_URL}/uploads/avatars/{thumb_filename}?t={ts}",
+        uploaded_at=user.avatar_updated_at,
     )
 
-# ─────────────────────────────────────────────────────────────
-# GET /users/avatar/{user_id}
-# ─────────────────────────────────────────────────────────────
 @router.get("/users/avatar/{user_id}")
 async def get_avatar_url(user_id: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.avatar_url:
         raise HTTPException(404, detail="Avatar not found")
 
-    thumb_url = user.avatar_url.replace(".", "_thumb.")
     ts = int(user.avatar_updated_at.timestamp()) if user.avatar_updated_at else 0
+    thumb_url = user.avatar_url.replace(".", "_thumb.")
 
     return JSONResponse(
         {
             "avatar_url": f"{BASE_URL}{user.avatar_url}?t={ts}",
-            "thumbnail_url": f"{BASE_URL}{thumb_url}?t={ts}"
+            "thumbnail_url": f"{BASE_URL}{thumb_url}?t={ts}",
         }
     )
