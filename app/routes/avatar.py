@@ -39,7 +39,7 @@ def safe_mkdir(path: Path):
 
 safe_mkdir(AVATAR_DIR)
 
-@router.post("/users/avatar", response_model=AvatarUploadResponse)
+@router.post("/avatar", response_model=AvatarUploadResponse)
 async def upload_avatar(
     file: UploadFile = File(...),
     token: TokenData = Depends(get_user_from_headers),
@@ -112,7 +112,7 @@ async def upload_avatar(
         uploaded_at=user.avatar_updated_at,
     )
 
-@router.get("/users/avatar/{user_id}")
+@router.get("/avatar/{user_id}")
 async def get_avatar_url(user_id: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.avatar_url:
@@ -125,5 +125,4 @@ async def get_avatar_url(user_id: str, db: Session = Depends(get_db)):
         {
             "avatar_url": f"{BASE_URL}{user.avatar_url}?t={ts}",
             "thumbnail_url": f"{BASE_URL}{thumb_url}?t={ts}",
-        }
-    )
+        }    )

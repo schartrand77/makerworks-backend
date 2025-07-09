@@ -19,7 +19,7 @@ from app.schemas.user import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(tags=["users"])
 
 AVATAR_DIR = Path(settings.upload_dir) / "avatars"
 AVATAR_DIR.mkdir(parents=True, exist_ok=True)
@@ -180,4 +180,5 @@ async def get_avatar_url(user_sub: str):
     for ext in ALLOWED_EXTENSIONS:
         candidate = AVATAR_DIR / f"user_{user_sub}{ext}"
         if candidate.exists():
-            return {"avatar_url": f"/static/avatars/{candidate.name}"}    raise HTTPException(status_code=404, detail="Avatar not found")
+            return {"avatar_url": f"/static/avatars/{candidate.name}"}
+    raise HTTPException(status_code=404, detail="Avatar not found")
