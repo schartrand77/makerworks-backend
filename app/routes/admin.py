@@ -6,10 +6,11 @@ from sqlalchemy.future import select
 import httpx
 import os
 
-from app.models.models import ModelMetadata # ✅ Resolved ambiguous import
+from app.models.models import ModelMetadata
 from app.db.database import get_db
 from app.dependencies.auth import admin_required
 from app.services.auth_service import log_action
+from app.utils.logging import logger  # make sure logger is imported
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -143,3 +144,18 @@ async def update_discord_config(request: Request, admin=Depends(admin_required))
     })
     await log_action(admin.sub, "update_discord_config", payload=data)
     return {"status": "ok", "message": "Discord configuration updated."}
+
+
+# 👑 Hidden God Mode unlock endpoint
+@router.post("/unlock")
+async def god_mode_unlock(request: Request):
+    """
+    Hidden route for Konami Code God Mode.
+    No auth required — logs caller IP.
+    """
+    client_ip = request.client.host
+    logger.warning(f"👑 God Mode unlock triggered from {client_ip}")
+    return {
+        "status": "ok",
+        "message": f"God Mode unlocked from {client_ip}"
+    }

@@ -5,6 +5,7 @@ from fastapi import APIRouter
 # Individual route imports (alphabetical for clarity)
 from .admin import router as admin_router
 from .auth import router as auth_router
+from .bambu_connect import router as bambu_router
 from .cart import router as cart_router
 from .checkout import router as checkout_router
 from .discord import router as discord_router
@@ -21,6 +22,7 @@ router = APIRouter()
 # Register each router under a clean prefix
 router.include_router(admin_router, prefix="/admin", tags=["admin"])
 router.include_router(auth_router, prefix="/auth", tags=["auth"])
+router.include_router(bambu_router, prefix="/bambu", tags=["bambu"])
 router.include_router(cart_router, prefix="/cart", tags=["cart"])
 router.include_router(checkout_router, prefix="/checkout", tags=["checkout"])
 router.include_router(discord_router, prefix="/discord", tags=["discord"])

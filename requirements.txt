@@ -4,6 +4,7 @@ uvicorn[standard]
 
 # 🗃️ Database & ORM
 sqlalchemy>=2.0
+greenlet>=3.0
 asyncpg
 psycopg2-binary
 alembic>=1.13.1
@@ -29,6 +30,9 @@ httpx
 
 # 💳 Stripe Payments
 stripe
+
+# 📈 Metrics & Monitoring
+prometheus-client>=0.22.0
 
 # 🛠️ Utilities & Performance
 loguru

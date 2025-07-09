@@ -15,6 +15,7 @@ def setup_cors(app: FastAPI) -> None:
             "http://localhost:5173",
             "http://127.0.0.1:5173",
             "http://192.168.1.191:5173",
+            
         ]
 
     # 🚨 Fail fast if required dev origin is not present

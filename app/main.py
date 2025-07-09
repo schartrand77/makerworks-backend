@@ -54,7 +54,7 @@ async def debug_origin(request: Request, call_next):
 # ─── Lifecycle Hook: System Info Snapshot ────────────────────
 @app.on_event("startup")
 async def log_startup_system_info():
-    snapshot = await get_system_status_snapshot()
+    snapshot = get_system_status_snapshot()  # 👈 removed `await`
     logger.info("📊 System Snapshot on Startup:")
     for key, value in snapshot.items():
         logger.info(f"   {key}: {value}")

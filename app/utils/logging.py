@@ -7,51 +7,53 @@ import uuid
 import psycopg2
 import requests
 import logging
+import sys
 from psycopg2 import OperationalError
 from typing import Optional, List
 from prometheus_client import Gauge, Info
 
 from app.utils.boot_messages import random_boot_message
 
+try:
+    import colorlog
+except ImportError:
+    colorlog = None
+
 START_TIME = time.time()
 
-
-# ─────────── Terminal Colors ───────────
-class Colors:
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    CYAN = '\033[96m'
-    RESET = '\033[0m'
-    GREY = '\033[90m'
-    BOLD = '\033[1m'
-
-
-# ─────────── Colored Formatter ───────────
-class ColorFormatter(logging.Formatter):
-    LEVEL_COLORS = {
-        logging.DEBUG: Colors.GREY,
-        logging.INFO: Colors.OKGREEN,
-        logging.WARNING: Colors.WARNING,
-        logging.ERROR: Colors.FAIL,
-        logging.CRITICAL: Colors.BOLD + Colors.FAIL,
-    }
-
-    def format(self, record):
-        color = self.LEVEL_COLORS.get(record.levelno, Colors.RESET)
-        message = super().format(record)
-        return f"{color}{message}{Colors.RESET}"
-
-
-# ─────────── Structured Logger ───────────
 logger = logging.getLogger("makerworks")
 logger.setLevel(logging.INFO)
 
-if not logger.hasHandlers():
-    handler = logging.StreamHandler()
-    formatter = ColorFormatter("[%(asctime)s] [%(levelname)s] %(message)s")
+
+def configure_colorlog():
+    """
+    Configures the logger with colorlog if available.
+    """
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    handler = logging.StreamHandler(sys.stdout)
+
+    if colorlog:
+        formatter = colorlog.ColoredFormatter(
+            "%(log_color)s[%(asctime)s] [%(levelname)s]%(reset)s %(message)s",
+            log_colors={
+                "DEBUG": "cyan",
+                "INFO": "green",
+                "WARNING": "yellow",
+                "ERROR": "red",
+                "CRITICAL": "red,bg_white",
+            }
+        )
+    else:
+        formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s")
+
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+
+# call it immediately to set up logging on import
+configure_colorlog()
 
 
 # ─────────── Prometheus Gauges ───────────
@@ -106,10 +108,22 @@ def check_authentik_available() -> bool:
 
 
 def detect_gpu() -> str:
-    if os.system("nvidia-smi > /dev/null 2>&1") == 0:
-        return "NVIDIA"
+    # Improved GPU detection
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True, text=True, check=True
+        )
+        gpus = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+        if gpus:
+            return ", ".join(gpus)
+    except Exception:
+        pass
+
     if platform.system() == "Darwin" and platform.machine().startswith("arm"):
         return "Apple Metal"
+
     return "None"
 
 
@@ -152,4 +166,4 @@ def startup_banner(route_count: Optional[int] = None, routes: Optional[List[str]
     logger.info(f"⏱️  Startup Time: {elapsed:.2f}s")
     startup_time_gauge.set(elapsed)
 
-    logger.info(f"{random_boot_message()}")
+    logger.info(f"🎬 Boot Message: {random_boot_message()}")

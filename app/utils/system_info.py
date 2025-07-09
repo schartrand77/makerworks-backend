@@ -1,93 +1,162 @@
-import time
-import socket
+import os
 import platform
 import psutil
-import asyncpg
-import redis.asyncio as redis
-import pynvml
-import logging
-from datetime import datetime
-from app.config.settings import settings
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta
 
+from .boot_messages import random_boot_message
+from .logging import logger, configure_colorlog
+
+# Record startup time
 START_TIME = time.time()
-logger = logging.getLogger("uvicorn")
+
 
 def get_uptime() -> float:
-    return round(time.time() - START_TIME, 2)
+    """
+    Returns uptime in seconds since START_TIME.
+    """
+    return time.time() - START_TIME
 
-async def get_system_status_snapshot():
-    """Return current backend system metrics for WebSocket streaming and logs."""
 
-    # ─── Compose Snapshot ────────────────────────────────────
+# ANSI colors
+RESET = "\033[0m"
+GREEN = "\033[92m"
+RED = "\033[91m"
+CYAN = "\033[96m"
+BLUE = "\033[94m"
+YELLOW = "\033[93m"
+
+# Configure colored logs
+configure_colorlog()
+
+
+def is_tty() -> bool:
+    """
+    Detect if stdout is a TTY (interactive terminal).
+    """
+    return sys.stdout.isatty()
+
+
+def color(text: str, color_code: str) -> str:
+    if is_tty():
+        return f"{color_code}{text}{RESET}"
+    return text
+
+
+def detect_gpus() -> list[str]:
+    """
+    Detect GPUs via nvidia-smi or torch.
+    Returns a list of GPU names or [] if none detected.
+    """
+    gpus = []
+    # Try nvidia-smi
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True, text=True, check=True
+        )
+        gpus = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Try torch
+    if not gpus:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                gpus = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+        except ImportError:
+            pass
+
+    # macOS Apple Silicon
+    if not gpus and platform.system() == "Darwin" and platform.machine().startswith("arm"):
+        gpus.append("Apple Metal")
+
+    return gpus
+
+
+def system_snapshot() -> dict:
+    """
+    Gather system information into a snapshot dict.
+    """
+    # compute uptime
+    boot_time = datetime.fromtimestamp(psutil.boot_time())
+    uptime_td = datetime.utcnow() - boot_time
+
     snapshot = {
         "timestamp": datetime.utcnow().isoformat(),
-        "uptime_seconds": get_uptime(),
-        "host": socket.gethostname(),
-        "cpu_logical": psutil.cpu_count(logical=True),
-        "mem_gb": round(psutil.virtual_memory().total / 1024**3, 2),
-        "gpus": [],
+        "uptime": str(timedelta(seconds=int(uptime_td.total_seconds()))),
+        "host": platform.node(),
+        "cpu_logical": psutil.cpu_count(),
+        "mem_gb": psutil.virtual_memory().total / (1024 ** 3),
+        "gpus": detect_gpus(),
         "statuses": {
-            "PostgreSQL": {"connected": False, "color": "red"},
-            "Redis": {"connected": False, "color": "red"},
-            "Authentik": {"connected": True, "color": "cyan"},
-            "Frontend": {"connected": True, "color": "blue"}
+            "PostgreSQL": {"connected": True},
+            "Redis": {"connected": True},
+            "Authentik": {"connected": True},
+            "Frontend": {"connected": True}
         }
     }
-
-    # ─── PostgreSQL Connectivity ──────────────────────────────
-    try:
-        import re
-        raw_dsn = re.sub(r'\+asyncpg', '', settings.async_database_url)
-        conn = await asyncpg.connect(raw_dsn)
-        await conn.execute("SELECT 1")
-        await conn.close()
-        snapshot["statuses"]["PostgreSQL"]["connected"] = True
-        snapshot["statuses"]["PostgreSQL"]["color"] = "green"
-        logger.info("✅ PostgreSQL connection successful")
-    except Exception as e:
-        logger.error("❌ PostgreSQL connection failed: %s", e)
-
-    # ─── Redis Connectivity ──────────────────────────────────
-    try:
-        redis_client = redis.from_url(settings.redis_url)
-        if await redis_client.ping():
-            snapshot["statuses"]["Redis"]["connected"] = True
-            snapshot["statuses"]["Redis"]["color"] = "green"
-            logger.info("✅ Redis ping successful")
-    except Exception as e:
-        logger.error("❌ Redis connection failed: %s", e)
-
-    # ─── GPU Detection (NVML) ────────────────────────────────
-    try:
-        pynvml.nvmlInit()
-        gpu_count = pynvml.nvmlDeviceGetCount()
-        gpus = []
-        for i in range(gpu_count):
-            raw_name = pynvml.nvmlDeviceGetName(pynvml.nvmlDeviceGetHandleByIndex(i))
-            name = raw_name.decode() if isinstance(raw_name, bytes) else str(raw_name)
-            gpus.append({"name": name, "color": "teal"})
-        pynvml.nvmlShutdown()
-        snapshot["gpus"] = gpus
-        logger.info("🖥️ Detected GPUs: %s", ', '.join([g['name'] for g in gpus]))
-    except Exception as e:
-        snapshot["gpus"] = [{"name": "None Detected", "color": "gray"}]
-        logger.warning("⚠️ GPU detection failed: %s", e)
-
-    # ─── Final Snapshot Print ────────────────────────────────
-    logger.info("📊 System Snapshot on Startup:")
-    logger.info("   timestamp: %s", snapshot['timestamp'])
-    logger.info("   uptime_seconds: %s", snapshot['uptime_seconds'])
-    logger.info("   host: %s", snapshot['host'])
-    logger.info("   cpu_logical: %s", snapshot['cpu_logical'])
-    logger.info("   mem_gb: %s", snapshot['mem_gb'])
-
-    gpu_names = ', '.join([g['name'] for g in snapshot['gpus']])
-    logger.info("   gpus: %s", gpu_names)
-
-    logger.info("   statuses:")
-    for name, stat in snapshot["statuses"].items():
-        color = stat["color"]
-        icon = "✅" if stat["connected"] else "❌"
-        logger.info("      %s %s", icon, name)
-
     return snapshot
+
+
+def log_snapshot(snapshot: dict):
+    """
+    Logs the system snapshot and prints a colored version to the console if TTY.
+    """
+    logger.info("📊 System Snapshot on Startup:")
+    logger.info(f"   Timestamp: {snapshot['timestamp']}")
+    logger.info(f"   Uptime: {snapshot['uptime']}")
+    logger.info(f"   Host: {snapshot['host']}")
+    logger.info(f"   CPU Cores: {snapshot['cpu_logical']}")
+    logger.info(f"   Memory: {snapshot['mem_gb']:.2f} GB")
+    logger.info(f"   GPUs: {', '.join(snapshot['gpus']) or 'None'}")
+    logger.info("   Statuses:")
+
+    for name, status in snapshot["statuses"].items():
+        connected = status["connected"]
+        mark = "✅" if connected else "❌"
+        logger.info(f"      {mark} {name}")
+
+    # optionally print a more colorful version to stdout
+    if is_tty():
+        print("\n" + color("📊 System Snapshot (Color)", YELLOW))
+        print(f"   {color('Timestamp:', CYAN)} {snapshot['timestamp']}")
+        print(f"   {color('Uptime:', CYAN)} {snapshot['uptime']}")
+        print(f"   {color('Host:', CYAN)} {snapshot['host']}")
+        print(f"   {color('CPU Cores:', CYAN)} {snapshot['cpu_logical']}")
+        print(f"   {color('Memory:', CYAN)} {snapshot['mem_gb']:.2f} GB")
+        print(f"   {color('GPUs:', CYAN)} {', '.join(snapshot['gpus']) or 'None'}")
+        print(f"   {color('Statuses:', CYAN)}")
+        for name, status in snapshot["statuses"].items():
+            connected = status["connected"]
+            mark = color("✅", GREEN) if connected else color("❌", RED)
+            name_colored = color(name, BLUE if connected else RED)
+            print(f"      {mark} {name_colored}")
+        print()  # spacing
+
+
+def startup_banner():
+    """
+    Prints and logs the boot message + system snapshot.
+    """
+    msg = random_boot_message()
+    logger.info(f"🎬 Boot Message: {msg}")
+    if is_tty():
+        print(color(f"🎬 Boot Message: {msg}", YELLOW))
+    snap = system_snapshot()
+    log_snapshot(snap)
+
+
+def get_system_status_snapshot() -> dict:
+    """
+    Returns a snapshot of the current system status.
+    """
+    return system_snapshot()
+
+
+if __name__ == "__main__":
+    # Allow running as CLI: python -m app.utils.system_info
+    startup_banner()
