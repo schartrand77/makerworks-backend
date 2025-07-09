@@ -43,6 +43,8 @@ class User(Base):
     hashed_password = Column(String(128), nullable=False)  # enforce max 128 chars in DB
 
     avatar = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+    avatar_updated_at = Column(DateTime, nullable=True)
     bio = Column(Text, nullable=True)
     language = Column(String, default="en")
     theme = Column(String, default="system")
@@ -92,6 +94,10 @@ class User(Base):
             "email": self.email,
             "username": self.username,
             "avatar": self.avatar,
+            "avatar_url": self.avatar_url,
+            "avatar_updated_at": (
+                self.avatar_updated_at.isoformat() if self.avatar_updated_at else None
+            ),
             "bio": self.bio,
             "language": self.language,
             "theme": self.theme,
