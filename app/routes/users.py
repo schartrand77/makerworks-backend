@@ -1,19 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.orm import Session
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-import shutil
-import logging
-
-from app.db.database import get_db
 from app.config.settings import settings
-from app.schemas.token import TokenData
-from app.dependencies.auth import get_user_from_headers, get_current_user
+from app.db.database import get_db
+from app.dependencies.auth import get_current_user, get_user_from_headers
 from app.models import User
-from app.schemas.user import UpdateUserProfile, UserOut
+from app.schemas.token import TokenData
+from app.schemas.user import (
+    AvatarUploadResponse,
+    UpdateUserProfile,
+    UserOut,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,18 +31,13 @@ ALLOWED_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp"]
 # Response Schemas
 # ─────────────────────────────────────────────────────────────
 
+
 class MeResponse(BaseModel):
     sub: str
     username: str
     email: str
     avatar: str
     groups: list[str]
-
-
-class AvatarUploadResponse(BaseModel):
-    status: str
-    avatar_url: str
-    uploaded_at: str
 
 
 class AvatarLookupResponse(BaseModel):
@@ -60,7 +57,12 @@ class AdminUserListStub(BaseModel):
 # GET /users/me
 # ─────────────────────────────────────────────────────────────
 
-@router.get("/me", response_model=MeResponse, summary="Get current user (OIDC token from Authentik)")
+
+@router.get(
+    "/me",
+    response_model=MeResponse,
+    summary="Get current user (OIDC token from Authentik)",
+)
 async def get_me(token: TokenData = Depends(get_user_from_headers)):
     """Returns basic user info derived from the Authentik-issued token."""
     return {
@@ -75,6 +77,7 @@ async def get_me(token: TokenData = Depends(get_user_from_headers)):
 # ─────────────────────────────────────────────────────────────
 # PATCH /users/me
 # ─────────────────────────────────────────────────────────────
+
 
 @router.patch("/me", response_model=UserOut, summary="Update user profile (bio, etc.)")
 async def update_profile(
@@ -93,10 +96,14 @@ async def update_profile(
 # POST /users/avatar
 # ─────────────────────────────────────────────────────────────
 
-@router.post("/avatar", response_model=AvatarUploadResponse, summary="Upload avatar image (stored by sub UUID)")
+
+@router.post(
+    "/avatar",
+    response_model=AvatarUploadResponse,
+    summary="Upload avatar image (stored by sub UUID)",
+)
 async def upload_avatar(
-    file: UploadFile = File(...),
-    token: TokenData = Depends(get_user_from_headers)
+    file: UploadFile = File(...), token: TokenData = Depends(get_user_from_headers)
 ):
     """Store a user avatar using their Authentik `sub` as file identifier."""
     ext = Path(file.filename).suffix.lower()
@@ -123,7 +130,8 @@ async def upload_avatar(
     return AvatarUploadResponse(
         status="uploaded",
         avatar_url=f"/static/avatars/{avatar_filename}",
-        uploaded_at=datetime.utcnow().isoformat()
+        thumbnail_url=f"/static/avatars/{avatar_filename}",
+        uploaded_at=datetime.utcnow(),
     )
 
 
@@ -131,7 +139,12 @@ async def upload_avatar(
 # GET /users/username/check
 # ─────────────────────────────────────────────────────────────
 
-@router.get("/username/check", response_model=UsernameCheckResponse, summary="Stub: check username availability")
+
+@router.get(
+    "/username/check",
+    response_model=UsernameCheckResponse,
+    summary="Stub: check username availability",
+)
 async def check_username():
     """Always returns false — username management is delegated to Authentik."""
     return {"available": False, "note": "Username is managed by Authentik"}
@@ -141,7 +154,10 @@ async def check_username():
 # GET /users (admin-only stub)
 # ─────────────────────────────────────────────────────────────
 
-@router.get("/", response_model=AdminUserListStub, summary="Admin-only: stub for full user list")
+
+@router.get(
+    "/", response_model=AdminUserListStub, summary="Admin-only: stub for full user list"
+)
 async def get_all_users(token: TokenData = Depends(get_user_from_headers)):
     """Stub for fetching all users — use Authentik API directly instead."""
     if "admin" not in token.groups:
@@ -153,11 +169,15 @@ async def get_all_users(token: TokenData = Depends(get_user_from_headers)):
 # GET /users/avatar/{user_sub}
 # ─────────────────────────────────────────────────────────────
 
-@router.get("/avatar/{user_sub}", response_model=AvatarLookupResponse, summary="Lookup avatar by Authentik UUID")
+
+@router.get(
+    "/avatar/{user_sub}",
+    response_model=AvatarLookupResponse,
+    summary="Lookup avatar by Authentik UUID",
+)
 async def get_avatar_url(user_sub: str):
     """Returns the URL of a locally stored avatar for a given user UUID (`sub`)."""
     for ext in ALLOWED_EXTENSIONS:
         candidate = AVATAR_DIR / f"user_{user_sub}{ext}"
         if candidate.exists():
-            return {"avatar_url": f"/static/avatars/{candidate.name}"}
-    raise HTTPException(status_code=404, detail="Avatar not found")
+            return {"avatar_url": f"/static/avatars/{candidate.name}"}    raise HTTPException(status_code=404, detail="Avatar not found")
