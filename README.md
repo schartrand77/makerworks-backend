@@ -8,6 +8,7 @@ This is the FastAPI + Celery + PostgreSQL backend powering the MakerWorks 3D pri
 - 📸 Thumbnail rendering (Blender)
 - 🎯 Redis queue + Celery for background jobs
 - 📁 PostgreSQL via SQLAlchemy
+- 🖼️ Avatar uploads via `/api/v1/users/avatar`
 
 ## Dev Setup
 
