@@ -11,7 +11,6 @@ from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
 from PIL import Image
-import shutil
 import logging
 import tempfile
 import io
