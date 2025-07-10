@@ -19,7 +19,7 @@ router = APIRouter()
 # Config
 # ─────────────────────────────────────────────────────────────
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
-MODEL_DIR: Path = settings.model_dir
+MODEL_DIR: Path = Path(settings.model_dir)  # ← FIXED here
 
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -29,7 +29,6 @@ ALLOWED_MODEL_TYPES = {
     "model/stl",
     "application/3mf",
 }
-
 
 # ─────────────────────────────────────────────────────────────
 # Ensure upload directories exist
@@ -41,9 +40,7 @@ def safe_mkdir(path: Path):
         logging.error(f"[ERROR] Could not create directory {path}: {e}")
         raise HTTPException(500, f"Upload directory error: {e}")
 
-
 safe_mkdir(MODEL_DIR)
-
 
 # ─────────────────────────────────────────────────────────────
 # Helpers
@@ -56,11 +53,9 @@ def save_file(destination: Path, data: bytes):
         logging.error(f"[ERROR] Saving file failed: {e}")
         raise HTTPException(500, "Failed to save file")
 
-
 def validate_file_size(data: bytes, max_size: int):
     if len(data) > max_size:
         raise HTTPException(400, f"File too large (max {max_size // (1024*1024)} MB)")
-
 
 # ─────────────────────────────────────────────────────────────
 # POST /api/v1/upload
@@ -87,7 +82,8 @@ async def upload_model(
 
     now_iso = datetime.utcnow().isoformat()
 
-    # ─────────────── Upload Model ───────────────    if file.content_type not in ALLOWED_MODEL_TYPES:
+    # ─────────────── Upload Model ───────────────
+    if file.content_type not in ALLOWED_MODEL_TYPES:
         raise HTTPException(400, "Unsupported 3D model file type")
 
     model_id = str(uuid4())
