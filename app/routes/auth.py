@@ -10,7 +10,7 @@ from app.schemas.auth import SignupRequest, SigninRequest, UserOut
 from app.models.models import User
 from app.db.session import get_db
 from app.services.token_service import create_access_token
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, admin_required
 from app.utils.logging import logger
 
 router = APIRouter()
@@ -22,19 +22,14 @@ logger.info("[Auth] Using password hashing scheme(s): %s", pwd_context.schemes()
 
 @router.post("/signup")
 async def signup(
-    payload: SignupRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db)
+    payload: SignupRequest, request: Request, db: AsyncSession = Depends(get_db)
 ):
     logger.debug("[SignUp] Received signup request for email: %s", payload.email)
 
     # check if user with email or username already exists
     result = await db.execute(
         select(User).where(
-            or_(
-                User.email == payload.email,
-                User.username == payload.username
-            )
+            or_(User.email == payload.email, User.username == payload.username)
         )
     )
     existing_user = result.scalar_one_or_none()
@@ -54,7 +49,7 @@ async def signup(
         email=payload.email,
         username=payload.username,
         hashed_password=hashed_password,
-        role=role
+        role=role,
     )
 
     db.add(user)
@@ -64,24 +59,18 @@ async def signup(
     token = create_access_token(user_id=user.id, email=user.email)
     logger.info("[SignUp] Success for: %s (role: %s)", user.email, user.role)
 
-    return {
-        "user": UserOut(**user.to_dict()),
-        "token": token
-    }
+    return {"user": UserOut(**user.to_dict()), "token": token}
 
 
 @router.post("/signin")
-async def signin(
-    payload: SigninRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
     logger.debug("[SignIn] Attempt for: %s", payload.email_or_username)
 
     result = await db.execute(
         select(User).where(
             or_(
                 User.email == payload.email_or_username,
-                User.username == payload.email_or_username
+                User.username == payload.email_or_username,
             )
         )
     )
@@ -98,50 +87,32 @@ async def signin(
     token = create_access_token(user_id=user.id, email=user.email)
     logger.info("[SignIn] Success for: %s", user.username)
 
-    return {
-        "user": UserOut(**user.to_dict()),
-        "token": token
-    }
+    return {"user": UserOut(**user.to_dict()), "token": token}
 
 
 @router.post("/login")
-async def login(
-    payload: SigninRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def login(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
     logger.debug("[Login] Delegating to /signin for: %s", payload.email_or_username)
     return await signin(payload, db)
 
 
 @router.get("/me")
-async def get_me(
-    current_user: User = Depends(get_current_user)
-):
+async def get_me(current_user: User = Depends(get_current_user)):
     logger.debug("[Me] Authenticated as: %s", current_user.email)
 
-    return {
-        "user": UserOut(**current_user.to_dict()),
-        "token": None
-    }
+    return {"user": UserOut(**current_user.to_dict()), "token": None}
 
 
 @router.get("/debug")
-async def debug_me(
-    current_user: User = Depends(get_current_user)
-):
+async def debug_me(current_user: User = Depends(get_current_user)):
     logger.debug("[Debug] Testing serialization for user: %s", current_user.email)
 
-    return {
-        "user": UserOut(**current_user.to_dict()),
-        "token": "debug-token"
-    }
+    return {"user": UserOut(**current_user.to_dict()), "token": "debug-token"}
 
 
 # 👑 Hidden God Mode Unlock Endpoint
 @router.post("/admin/unlock")
-async def admin_unlock(
-    request: Request
-):
+async def admin_unlock(request: Request, admin=Depends(admin_required)):
     client_ip = request.client.host
     if client_ip not in {"127.0.0.1", "localhost"}:
         logger.warning("Unauthorized God Mode unlock attempt from: %s", client_ip)
@@ -150,7 +121,4 @@ async def admin_unlock(
     logger.warning("👑 God Mode unlocked from: %s", client_ip)
     # Optionally persist an audit record to DB here
 
-    return {
-        "status": "ok",
-        "message": f"God Mode unlocked from {client_ip}"
-    }
+    return {"status": "ok", "message": f"God Mode unlocked from {client_ip}"}
