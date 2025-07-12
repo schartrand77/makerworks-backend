@@ -7,7 +7,10 @@ import os
 import httpx
 from jose import jwt, JWTError
 
-AUTHENTIK_USERINFO_URL = os.getenv("AUTHENTIK_USERINFO_URL", "http://192.168.1.170:9000/application/o/userinfo/")
+AUTHENTIK_USERINFO_URL = os.getenv(
+    "AUTHENTIK_USERINFO_URL",
+    "http://localhost:9000/application/o/userinfo/",
+)
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",")

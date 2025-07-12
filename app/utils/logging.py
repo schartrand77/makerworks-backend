@@ -90,7 +90,7 @@ def check_postgres_available() -> bool:
 
 def check_authentik_available() -> bool:
     default_url = "http://authentik:9000/outpost.goauthentik.io/ping"
-    fallback_url = "http://192.168.1.170:9000/outpost.goauthentik.io/ping"
+    fallback_url = "http://localhost:9000/outpost.goauthentik.io/ping"
     attempted_urls = []
 
     for url in [default_url, fallback_url]:

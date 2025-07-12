@@ -11,7 +11,11 @@ from sqlalchemy.pool import NullPool
 # ───────────────────────────────────────────────
 # Config
 # ───────────────────────────────────────────────
-DATABASE_URL = os.getenv("ASYNC_DATABASE_URL", "postgresql+asyncpg://authentik:authentik@192.168.1.170:5432/makerworks")
+# Default to a local development database if none is provided
+DATABASE_URL = os.getenv(
+    "ASYNC_DATABASE_URL",
+    "postgresql+asyncpg://user:pass@localhost:5432/makerworks",
+)
 
 logger = logging.getLogger("makerworks.database")
 logger.info(f"[DB] Loaded ASYNC_DATABASE_URL = {DATABASE_URL}")

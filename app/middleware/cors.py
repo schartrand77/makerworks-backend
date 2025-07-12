@@ -14,12 +14,10 @@ def setup_cors(app: FastAPI) -> None:
         allowed_origins = [
             "http://localhost:5173",
             "http://127.0.0.1:5173",
-            "http://192.168.1.191:5173",
-            
         ]
 
     # 🚨 Fail fast if required dev origin is not present
-    required_origin = "http://192.168.1.191:5173"
+    required_origin = "http://localhost:5173"
     if required_origin not in allowed_origins:
         raise RuntimeError(f"🚨 CORS misconfiguration: {required_origin} is missing from allowed_origins")
 
