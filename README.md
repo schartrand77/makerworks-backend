@@ -15,7 +15,7 @@ This is the FastAPI + Celery + PostgreSQL backend powering the MakerWorks 3D pri
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt  # installs dependencies such as aiosqlite and authlib
 cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload
