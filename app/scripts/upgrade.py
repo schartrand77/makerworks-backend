@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
+import logging
 import os
 import sys
-import logging
-from alembic import command
+
+from alembic import command  # type: ignore[attr-defined]
 from alembic.config import Config
 
 # ─────────────────────────────────────────────────────────────
@@ -16,8 +17,7 @@ sys.path.insert(0, PROJECT_ROOT)
 # Logging setup
 # ─────────────────────────────────────────────────────────────
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger("alembic-upgrade")
 
@@ -39,7 +39,7 @@ def run_upgrade():
     try:
         command.upgrade(alembic_cfg, "head")
         logger.info("✅ Alembic upgrade complete.")
-    except Exception as e:
+    except Exception:
         logger.exception("❌ Alembic upgrade failed")
         sys.exit(1)
 

@@ -30,6 +30,7 @@ ALLOWED_MODEL_TYPES = {
     "application/3mf",
 }
 
+
 # ─────────────────────────────────────────────────────────────
 # Ensure upload directories exist
 # ─────────────────────────────────────────────────────────────
@@ -38,9 +39,11 @@ def safe_mkdir(path: Path):
         path.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         logging.error(f"[ERROR] Could not create directory {path}: {e}")
-        raise HTTPException(500, f"Upload directory error: {e}")
+        raise HTTPException(500, f"Upload directory error: {e}") from e
+
 
 safe_mkdir(MODEL_DIR)
+
 
 # ─────────────────────────────────────────────────────────────
 # Helpers
@@ -51,11 +54,13 @@ def save_file(destination: Path, data: bytes):
             buffer.write(data)
     except Exception as e:
         logging.error(f"[ERROR] Saving file failed: {e}")
-        raise HTTPException(500, "Failed to save file")
+        raise HTTPException(500, "Failed to save file") from e
+
 
 def validate_file_size(data: bytes, max_size: int):
     if len(data) > max_size:
         raise HTTPException(400, f"File too large (max {max_size // (1024*1024)} MB)")
+
 
 # ─────────────────────────────────────────────────────────────
 # POST /api/v1/upload

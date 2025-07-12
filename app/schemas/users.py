@@ -1,21 +1,25 @@
-from typing import Optional, Literal, List
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, constr
 from datetime import datetime
 from enum import Enum
+from typing import Literal
+
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, constr
 
 # ─────────────────────────────────────────────────────────────
 # Core User Base Schema
 # ─────────────────────────────────────────────────────────────
 
+
 class UserBase(BaseModel):
     email: EmailStr = Field(..., example="user@example.com")
-    username: constr(min_length=3, max_length=32) = Field(..., example="printmaster77")
+    username: constr(min_length=3, max_length=32) = Field(..., example="printmaster77")  # type: ignore[valid-type]
 
     model_config = {"from_attributes": True}
+
 
 # ─────────────────────────────────────────────────────────────
 # Output Schemas
 # ─────────────────────────────────────────────────────────────
+
 
 class UserOut(UserBase):
     id: int = Field(..., example=123)
@@ -23,11 +27,17 @@ class UserOut(UserBase):
     is_active: bool = Field(default=True)
     is_verified: bool = Field(default=False, example=True)
     created_at: datetime = Field(..., example="2024-01-15T12:00:00Z")
-    last_login: Optional[datetime] = Field(None, example="2025-06-13T07:45:00Z")
-    avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/abc123.jpg")
-    bio: Optional[constr(max_length=140)] = Field(None, example="Maker. Designer. Print wizard.")
-    language: Optional[Literal['en', 'fr', 'es', 'de', 'zh', 'ja']] = Field(default="en")
-    theme: Optional[Literal["light", "dark", "system"]] = Field(default="system", example="dark")
+    last_login: datetime | None = Field(None, example="2025-06-13T07:45:00Z")
+    avatar: HttpUrl | None = Field(
+        None, example="https://cdn.makerworks.io/avatars/abc123.jpg"
+    )
+    bio: constr(max_length=140) | None = Field(  # type: ignore[valid-type]
+        None, example="Maker. Designer. Print wizard."
+    )
+    language: Literal["en", "fr", "es", "de", "zh", "ja"] | None = Field(default="en")
+    theme: Literal["light", "dark", "system"] | None = Field(
+        default="system", example="dark"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -35,23 +45,29 @@ class UserOut(UserBase):
 class PublicUserOut(BaseModel):
     id: int = Field(..., example=123)
     username: str = Field(..., example="printmaster77")
-    avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/user123.jpg")
-    bio: Optional[str] = Field(None, example="I build printer mods.")
+    avatar: HttpUrl | None = Field(
+        None, example="https://cdn.makerworks.io/avatars/user123.jpg"
+    )
+    bio: str | None = Field(None, example="I build printer mods.")
     created_at: datetime = Field(..., example="2024-01-15T12:00:00Z")
 
     model_config = {"from_attributes": True}
+
 
 # ─────────────────────────────────────────────────────────────
 # Update Schemas
 # ─────────────────────────────────────────────────────────────
 
+
 class UserUpdate(BaseModel):
-    email: Optional[EmailStr] = None
-    username: Optional[constr(min_length=3, max_length=32)] = None
-    bio: Optional[constr(max_length=140)] = None
-    language: Optional[Literal['en', 'fr', 'es', 'de', 'zh', 'ja']] = None
-    theme: Optional[Literal["light", "dark", "system"]] = Field(None, example="dark")
-    avatar: Optional[HttpUrl] = Field(None, example="https://cdn.makerworks.io/avatars/user456.jpg")
+    email: EmailStr | None = None
+    username: constr(min_length=3, max_length=32) | None = None  # type: ignore[valid-type]
+    bio: constr(max_length=140) | None = None  # type: ignore[valid-type]
+    language: Literal["en", "fr", "es", "de", "zh", "ja"] | None = None
+    theme: Literal["light", "dark", "system"] | None = Field(None, example="dark")
+    avatar: HttpUrl | None = Field(
+        None, example="https://cdn.makerworks.io/avatars/user456.jpg"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -63,24 +79,25 @@ class EmailUpdate(BaseModel):
 
 
 class RoleUpdate(BaseModel):
-    role: Literal['admin', 'user'] = Field(..., example="admin")
+    role: Literal["admin", "user"] = Field(..., example="admin")
     user_id: int = Field(..., example=42)
 
     model_config = {"from_attributes": True}
+
 
 # ─────────────────────────────────────────────────────────────
 # Utility Schemas
 # ─────────────────────────────────────────────────────────────
 
+
 class AvatarUpdate(BaseModel):
-    avatar_url: Optional[HttpUrl] = Field(
+    avatar_url: HttpUrl | None = Field(
         default=None,
         example="https://cdn.makerworks.io/avatars/user123.jpg",
-        description="Direct URL to the new avatar"
+        description="Direct URL to the new avatar",
     )
-    base64_image: Optional[str] = Field(
-        default=None,
-        description="Base64-encoded image as fallback"
+    base64_image: str | None = Field(
+        default=None, description="Base64-encoded image as fallback"
     )
 
     model_config = {
@@ -88,9 +105,9 @@ class AvatarUpdate(BaseModel):
         "json_schema_extra": {
             "example": {
                 "avatar_url": "https://cdn.makerworks.io/avatars/user123.jpg",
-                "base64_image": None
+                "base64_image": None,
             }
-        }
+        },
     }
 
 
@@ -99,9 +116,11 @@ class UsernameAvailability(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
 # ─────────────────────────────────────────────────────────────
 # Admin Utility Schemas
 # ─────────────────────────────────────────────────────────────
+
 
 class UserAdminAction(str, Enum):
     promote = "promote"

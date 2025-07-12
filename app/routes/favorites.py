@@ -5,9 +5,9 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.models import ModelMetadata, Favorite, User
-from app.schemas import ModelOut
 from app.dependencies.auth import get_user_from_headers
+from app.models import Favorite, ModelMetadata, User
+from app.schemas import ModelOut
 
 router = APIRouter(prefix="/favorites", tags=["Favorites"])
 
@@ -33,7 +33,9 @@ async def get_user_favorites(
     )
 
     return [
-        ModelOut.model_validate(m).serialize(role="admin" if user.role == "admin" else "user")
+        ModelOut.model_validate(m).serialize(
+            role="admin" if user.role == "admin" else "user"
+        )
         for m in result
     ]
 

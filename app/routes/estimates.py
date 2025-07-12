@@ -29,4 +29,4 @@ def estimate_model(
     try:
         return calculate_estimate(data, db)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Estimation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Estimation failed: {e!s}") from e

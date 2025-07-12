@@ -1,32 +1,36 @@
-from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional, List, Dict, Literal
 from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, HttpUrl
+
 
 class ModelOut(BaseModel):
     id: int
     name: str
     uploader: str
     uploaded_at: datetime
-    preview_image: Optional[HttpUrl] = None
-    dimensions: Optional[Dict[str, float]] = None
-    volume_cm3: Optional[float] = None
-    tags: List[str] = []
-    face_count: Optional[int] = None
-    role: Optional[Literal["user", "admin"]] = "user"
-    description: Optional[str] = None
-    category: Optional[str] = "uncategorized"
+    preview_image: HttpUrl | None = None
+    dimensions: dict[str, float] | None = None
+    volume_cm3: float | None = None
+    tags: list[str] = []
+    face_count: int | None = None
+    role: Literal["user", "admin"] | None = "user"
+    description: str | None = None
+    category: str | None = "uncategorized"
     model_config = {"from_attributes": True}
+
 
 class ModelUploadRequest(BaseModel):
     name: str
-    description: Optional[str] = None
-    tags: List[str] = []
-    category: Optional[str] = "uncategorized"
+    description: str | None = None
+    tags: list[str] = []
+    category: str | None = "uncategorized"
     model_config = {"from_attributes": True}
+
 
 class ModelUploadResponse(BaseModel):
     id: int
     name: str
-    preview_image: Optional[HttpUrl] = None
+    preview_image: HttpUrl | None = None
     uploaded_at: datetime
     model_config = {"from_attributes": True}

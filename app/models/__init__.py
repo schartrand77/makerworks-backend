@@ -2,23 +2,23 @@
 
 from app.db import Base
 from app.models.models import (
-    User,
-    ModelMetadata,
+    Estimate,
+    EstimateSettings,
     Favorite,
     Filament,
-    EstimateSettings,
-    Estimate,
+    ModelMetadata,
+    User,
 )
 
 # Optional alias for compatibility
 Model3D = ModelMetadata
 
 __all__ = [
-    "User",
-    "ModelMetadata",
-    "Model3D",
+    "Estimate",
+    "EstimateSettings",
     "Favorite",
     "Filament",
-    "EstimateSettings",
-    "Estimate",
+    "Model3D",
+    "ModelMetadata",
+    "User",
 ]

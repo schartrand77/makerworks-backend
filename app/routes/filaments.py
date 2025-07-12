@@ -1,6 +1,8 @@
 # app/routes/filaments.py
 
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -43,7 +45,7 @@ async def add_filament(
     db: AsyncSession = Depends(get_async_db),
     user: User = Depends(get_user_from_headers),
 ):
-    assert_user_is_admin(user)
+    await assert_user_is_admin(user)
     new_filament = Filament(**filament.dict())
     db.add(new_filament)
     await db.commit()
@@ -67,7 +69,7 @@ async def update_filament(
     db: AsyncSession = Depends(get_async_db),
     user: User = Depends(get_user_from_headers),
 ):
-    assert_user_is_admin(user)
+    await assert_user_is_admin(user)
     result = await db.execute(select(Filament).where(Filament.id == fid))
     filament = result.scalar_one_or_none()
 
@@ -97,7 +99,7 @@ async def delete_filament(
     db: AsyncSession = Depends(get_async_db),
     user: User = Depends(get_user_from_headers),
 ):
-    assert_user_is_admin(user)
+    await assert_user_is_admin(user)
     result = await db.execute(select(Filament).where(Filament.id == fid))
     filament = result.scalar_one_or_none()
 
@@ -122,7 +124,7 @@ async def delete_filament(
 async def get_filament_picker_data(db: AsyncSession = Depends(get_async_db)):
     result = await db.execute(select(Filament).where(Filament.is_active == True))
     filaments = result.scalars().all()
-    picker = {}
+    picker: dict[str, Any] = {}
 
     for f in filaments:
         category = f.type or "Uncategorized"

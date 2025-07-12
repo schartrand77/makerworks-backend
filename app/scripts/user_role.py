@@ -2,9 +2,10 @@
 
 import argparse
 import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 import sys
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_maker
 from app.models.models import User
@@ -58,9 +59,13 @@ async def change_user_role(email: str, role: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Manage user roles.")
-    parser.add_argument("--list", action="store_true", help="List all users and their roles.")
+    parser.add_argument(
+        "--list", action="store_true", help="List all users and their roles."
+    )
     parser.add_argument("--email", help="Email of the user to update.")
-    parser.add_argument("--role", choices=["admin", "user"], help="New role for the user.")
+    parser.add_argument(
+        "--role", choices=["admin", "user"], help="New role for the user."
+    )
 
     args = parser.parse_args()
 

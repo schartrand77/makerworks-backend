@@ -1,18 +1,18 @@
 # app/dependencies.py
 
-from fastapi import Depends, HTTPException, status, Header
+
+import stripe
+from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import Optional, List
-import stripe
 
+from app.config.settings import settings
 from app.db.database import get_db
 from app.models.models import User
 from app.schemas.checkout import CheckoutRequest
-from app.config.settings import settings
 
 
-def parse_group_header(header_value: Optional[str]) -> List[str]:
+def parse_group_header(header_value: str | None) -> list[str]:
     """
     Parses a comma-separated header of groups into a list.
     Example: "MakerWorks-Admin,MakerWorks-User" -> ["MakerWorks-Admin", "MakerWorks-User"]
@@ -24,7 +24,7 @@ def parse_group_header(header_value: Optional[str]) -> List[str]:
 
 async def get_current_user(
     x_authentik_email: str = Header(..., alias="X-Authentik-Email"),
-    x_authentik_groups: Optional[str] = Header(None, alias="X-Authentik-Groups"),
+    x_authentik_groups: str | None = Header(None, alias="X-Authentik-Groups"),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
@@ -35,7 +35,9 @@ async def get_current_user(
     user = result.scalar_one_or_none()
 
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     groups = parse_group_header(x_authentik_groups)
     if "MakerWorks-Admin" in groups:
@@ -53,7 +55,9 @@ async def get_current_admin(user: User = Depends(get_current_user)) -> User:
     Raise 403 if user is not admin.
     """
     if user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required."
+        )
     return user
 
 
@@ -95,6 +99,6 @@ async def create_checkout_session(
         return {"checkout_url": session.url}
 
     except stripe.error.StripeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e

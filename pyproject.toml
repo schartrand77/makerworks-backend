@@ -56,13 +56,28 @@ line-length = 88
 target-version = "py311"
 fix = true
 exclude = [".git", ".mypy_cache", ".ruff_cache", ".venv", "build", "dist"]
-select = ["E", "F", "B", "I", "UP", "N", "SIM", "RUF"]
-ignore = ["E501"]
 
-[tool.ruff.isort]
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "UP", "N", "SIM", "RUF"]
+ignore = [
+  "E501",
+  "B008",
+  "RUF001",
+  "F401",
+  "F841",
+  "N805",
+  "SIM101",
+  "E712",
+]
+
+[tool.ruff.lint.isort]
 known-first-party = ["app"]
 combine-as-imports = true
 force-single-line = false
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
 
 [build-system]
 requires = ["poetry-core"]

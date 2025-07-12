@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+
+import requests  # type: ignore[import-untyped]
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+
 from app.db.session import get_db
-from app.schemas.user import UserOut
 from app.dependencies import get_current_user
-import requests
-import logging
+from app.schemas.user import UserOut
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +19,17 @@ router = APIRouter(
 
 class X1CCommand(BaseModel):
     ip: str = Field(..., description="IP address of the X1C printer")
-    access_token: str = Field(..., description="Local API access token from printer settings")
-    command: str = Field(..., description="Command to send: status | start_print | pause | stop | unlock | lock")
-    payload: dict = Field(default_factory=dict, description="Optional payload (e.g. file info, parameters)")
+    access_token: str = Field(
+        ..., description="Local API access token from printer settings"
+    )
+    command: str = Field(
+        ...,
+        description="Command to send: status | start_print | pause | stop | unlock | lock",
+    )
+    payload: dict = Field(
+        default_factory=dict,
+        description="Optional payload (e.g. file info, parameters)",
+    )
 
 
 def _make_headers(token: str):
@@ -45,7 +55,9 @@ async def x1c_status(
         return resp.json()
     except requests.RequestException as e:
         logger.error(f"X1C status fetch failed: {e}")
-        raise HTTPException(status_code=502, detail="Could not fetch status from printer.")
+        raise HTTPException(
+            status_code=502, detail="Could not fetch status from printer."
+        ) from e
 
 
 @router.post("/command")
@@ -69,18 +81,22 @@ async def x1c_command(
     }
 
     if cmd.command not in command_map:
-        raise HTTPException(status_code=400, detail=f"Unsupported command: {cmd.command}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported command: {cmd.command}"
+        )
 
     url = f"http://{cmd.ip}/access{command_map[cmd.command]}"
 
     try:
         logger.info(f"Sending X1C command: {cmd.command} → {url}")
-        resp = requests.post(url, headers=_make_headers(cmd.access_token), json=cmd.payload, timeout=5)
+        resp = requests.post(
+            url, headers=_make_headers(cmd.access_token), json=cmd.payload, timeout=5
+        )
         resp.raise_for_status()
         return {"status": "success", "response": resp.json()}
     except requests.RequestException as e:
         logger.error(f"X1C command failed: {e}")
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @router.get("/info")
@@ -99,4 +115,6 @@ async def x1c_info(
         return resp.json()
     except requests.RequestException as e:
         logger.error(f"X1C info fetch failed: {e}")
-        raise HTTPException(status_code=502, detail="Could not fetch printer info.")
+        raise HTTPException(
+            status_code=502, detail="Could not fetch printer info."
+        ) from e

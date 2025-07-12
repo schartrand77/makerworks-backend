@@ -1,9 +1,9 @@
 import os
-import uuid
 import shutil
-from typing import Tuple
-from fastapi import UploadFile
+import uuid
 from datetime import datetime
+
+from fastapi import UploadFile
 
 ALLOWED_EXTENSIONS = {".stl", ".3mf"}
 MAX_UPLOAD_SIZE_MB = 100
@@ -23,7 +23,7 @@ def generate_unique_filename(original_filename: str) -> str:
     return f"{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}_{uid}{ext}"
 
 
-def get_storage_paths(upload_dir: str, filename: str) -> Tuple[str, str]:
+def get_storage_paths(upload_dir: str, filename: str) -> tuple[str, str]:
     """
     Returns: (temp_path, final_path)
     """
@@ -51,4 +51,6 @@ def get_file_size_mb(path: str) -> float:
 def validate_file_size(path: str):
     size_mb = get_file_size_mb(path)
     if size_mb > MAX_UPLOAD_SIZE_MB:
-        raise ValueError(f"File exceeds {MAX_UPLOAD_SIZE_MB} MB limit (got {size_mb:.2f} MB)")
+        raise ValueError(
+            f"File exceeds {MAX_UPLOAD_SIZE_MB} MB limit (got {size_mb:.2f} MB)"
+        )

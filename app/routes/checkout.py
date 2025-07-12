@@ -1,16 +1,16 @@
 # app/routes/checkout.py
 
-import os
-import stripe
 import logging
-from fastapi import APIRouter, Depends, Request, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
+import os
 
-from app.dependencies.auth import get_user_from_headers
+import stripe
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.database import get_db
-from app.models import User
-from app.models import Estimate
+from app.dependencies.auth import get_user_from_headers
+from app.models import Estimate, User
 from app.tasks.render import generate_gcode
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 if not stripe.api_key:
     raise RuntimeError("❌ Missing STRIPE_SECRET_KEY")
 
+
 # ─────────────────────────────────────────────────────────────
 # Pydantic Request Model
 # ─────────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ class CheckoutRequest(BaseModel):
     model_id: int = Field(..., description="Uploaded model ID")
     estimate_id: int = Field(..., description="Associated estimate ID")
     total_cost: float = Field(..., description="Final total cost in USD")
+
 
 # ─────────────────────────────────────────────────────────────
 # Create Stripe Checkout Session
@@ -46,17 +48,19 @@ def create_checkout_session(
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": f"Model #{data.model_id}",
-                        "description": f"Estimate ID: {data.estimate_id}",
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {
+                            "name": f"Model #{data.model_id}",
+                            "description": f"Estimate ID: {data.estimate_id}",
+                        },
+                        "unit_amount": int(data.total_cost * 100),  # cents
                     },
-                    "unit_amount": int(data.total_cost * 100),  # cents
-                },
-                "quantity": 1,
-            }],
+                    "quantity": 1,
+                }
+            ],
             mode="payment",
             customer_email=user.email,
             success_url=f"{DOMAIN}/checkout/success",
@@ -71,7 +75,7 @@ def create_checkout_session(
         return {"id": session.id, "url": session.url}
     except Exception as e:
         logger.error("❌ Stripe session error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Stripe error: {e!s}") from e
 
 
 # ─────────────────────────────────────────────────────────────
@@ -84,14 +88,16 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     if not sig or not WEBHOOK_SECRET:
         logger.warning("⚠️ Missing Stripe signature or webhook secret")
-        raise HTTPException(status_code=400, detail="Missing webhook signature or secret")
+        raise HTTPException(
+            status_code=400, detail="Missing webhook signature or secret"
+        )
 
     try:
         event = stripe.Webhook.construct_event(payload, sig, WEBHOOK_SECRET)
-        logger.info("📡 Webhook event received: %s", event['type'])
-    except stripe.error.SignatureVerificationError:
+        logger.info("📡 Webhook event received: %s", event["type"])
+    except stripe.error.SignatureVerificationError as e:
         logger.error("❌ Stripe webhook signature invalid")
-        raise HTTPException(status_code=400, detail="Invalid Stripe signature")
+        raise HTTPException(status_code=400, detail="Invalid Stripe signature") from e
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
@@ -101,7 +107,12 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         model_id = metadata.get("model_id")
         estimate_id = metadata.get("estimate_id")
 
-        logger.info("✅ Payment complete for user %s, model %s, estimate %s", user_id, model_id, estimate_id)
+        logger.info(
+            "✅ Payment complete for user %s, model %s, estimate %s",
+            user_id,
+            model_id,
+            estimate_id,
+        )
 
         # ───── Update Estimate in DB ─────
         try:

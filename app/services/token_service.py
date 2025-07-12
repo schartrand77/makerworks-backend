@@ -1,16 +1,14 @@
 # app/services/token_service.py
 
-from datetime import datetime, timedelta
-from typing import Dict
 import json
-import uuid
 import logging
+import uuid
+from datetime import datetime, timedelta
 
 import httpx
-from jose import jwt
-from authlib.jose import jwt as authlib_jwt
-from authlib.jose import JsonWebKey
+from authlib.jose import JsonWebKey, jwt as authlib_jwt
 from fastapi import HTTPException, status
+from jose import jwt
 
 from app.config.settings import settings
 from app.services.redis_service import get_redis
@@ -25,23 +23,27 @@ JWKS_TTL_SECONDS = int(timedelta(hours=6).total_seconds())  # 6 hours
 # Load RS256 Private Key for Signing
 # ──────────────────────────────────────────────────────────────
 
+
 def load_private_key() -> str:
     try:
-        with open(settings.private_key_path, "r") as f:
+        with open(settings.private_key_path) as f:
             return f.read()
     except Exception as e:
-        raise RuntimeError(f"Could not load private key from {settings.private_key_path}: {e}")
+        raise RuntimeError(
+            f"Could not load private key from {settings.private_key_path}: {e}"
+        ) from e
 
 
 # ──────────────────────────────────────────────────────────────
 # Create RS256 Access Token
 # ──────────────────────────────────────────────────────────────
 
+
 def create_access_token(
     user_id: str,
     email: str,
     role: str = "user",
-    expires_delta: timedelta = timedelta(hours=2)
+    expires_delta: timedelta = timedelta(hours=2),
 ) -> str:
     now = datetime.utcnow()
     expire = now + expires_delta
@@ -71,6 +73,7 @@ def create_access_token(
 # Get JWKS from Redis or Fetch from Authentik
 # ──────────────────────────────────────────────────────────────
 
+
 async def get_jwks() -> JsonWebKey:
     redis = await get_redis()
 
@@ -98,14 +101,15 @@ async def get_jwks() -> JsonWebKey:
         return JsonWebKey.import_key_set(jwks_json)
 
     except Exception as e:
-        raise RuntimeError(f"Failed to fetch JWKS from Authentik: {e}")
+        raise RuntimeError(f"Failed to fetch JWKS from Authentik: {e}") from e
 
 
 # ──────────────────────────────────────────────────────────────
 # Validate RS256 Token from Authentik
 # ──────────────────────────────────────────────────────────────
 
-async def verify_token_rs256(token: str) -> Dict:
+
+async def verify_token_rs256(token: str) -> dict:
     try:
         jwks = await get_jwks()
         claims = authlib_jwt.decode(
@@ -125,4 +129,4 @@ async def verify_token_rs256(token: str) -> Dict:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid JWT: {e}",
-        )
+        ) from e

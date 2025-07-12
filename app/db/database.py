@@ -1,10 +1,11 @@
 # app/db/database.py
 
-import os
 import logging
-from typing import AsyncGenerator
+import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
 
@@ -43,6 +44,7 @@ AsyncSessionLocal = async_session  # alias for consistency
 # ───────────────────────────────────────────────
 Base = declarative_base()
 
+
 # ───────────────────────────────────────────────
 # FastAPI Dependency
 # ───────────────────────────────────────────────
@@ -54,15 +56,17 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
 
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session
+
 
 # ───────────────────────────────────────────────
 # Init DB (used on startup or for Alembic bootstraps)
 # ───────────────────────────────────────────────
 async def init_db() -> None:
-    import app.db.models  # ensure all models are registered
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         logger.info("[DB] Tables created successfully.")

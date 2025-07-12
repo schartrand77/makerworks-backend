@@ -1,11 +1,11 @@
-from __future__ import with_statement
-
 import os
 import sys
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
 from pathlib import Path
+
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # ───────────────────────────────────────────────
 # Force project root (/makerworks-backend) into sys.path
@@ -16,10 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # Load SQLAlchemy Base + Settings
 # ───────────────────────────────────────────────
 try:
-    from app.models.models import Base  # ✅ Adjusted to actual structure
     from app.config.settings import settings
+    from app.models.models import Base  # ✅ Adjusted to actual structure
 except ImportError as e:
-    raise RuntimeError(f"❌ Failed to import Base/config: {e}")
+    raise RuntimeError(f"❌ Failed to import Base/config: {e}") from e
 
 # ───────────────────────────────────────────────
 # Alembic Configuration
@@ -27,12 +27,15 @@ except ImportError as e:
 config = context.config
 fileConfig(config.config_file_name)
 
-sqlalchemy_url = getattr(settings, "database_url", None) or os.environ.get("DATABASE_URL")
+sqlalchemy_url = getattr(settings, "database_url", None) or os.environ.get(
+    "DATABASE_URL"
+)
 if not sqlalchemy_url:
     raise RuntimeError("❌ No DATABASE_URL found in settings or environment.")
 
 config.set_main_option("sqlalchemy.url", sqlalchemy_url)
 target_metadata = Base.metadata
+
 
 # ───────────────────────────────────────────────
 # Migration logic
@@ -67,6 +70,7 @@ def run_migrations_online():
 
         with context.begin_transaction():
             context.run_migrations()
+
 
 # ───────────────────────────────────────────────
 # Entrypoint

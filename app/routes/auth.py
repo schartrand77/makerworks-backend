@@ -1,16 +1,17 @@
 # app/routes/auth.py
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
-from passlib.context import CryptContext
 import uuid
 
-from app.schemas.auth import SignupRequest, SigninRequest, UserOut
-from app.models.models import User
+from fastapi import APIRouter, Depends, HTTPException, Request
+from passlib.context import CryptContext
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.session import get_db
+from app.dependencies.auth import admin_required, get_current_user
+from app.models.models import User
+from app.schemas.auth import SigninRequest, SignupRequest, UserOut
 from app.services.token_service import create_access_token
-from app.dependencies.auth import get_current_user, admin_required
 from app.utils.logging import logger
 
 router = APIRouter()
