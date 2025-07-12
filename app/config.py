@@ -80,7 +80,7 @@ class Settings(BaseSettings):
             socket.gethostbyname(hostname)
             return self.raw_authentik_url
         except socket.error:
-            return "http://192.168.1.170:9000"  # fallback for dev
+            return "http://localhost:9000"  # fallback for dev
 
     # ────────────────
     # JWT Fallback / Legacy Support
