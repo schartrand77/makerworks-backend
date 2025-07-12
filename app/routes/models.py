@@ -1,14 +1,14 @@
 # app/routes/models.py
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.db.database import get_db
+from app.dependencies.auth import get_user_from_headers
 from app.models import ModelMetadata
 from app.schemas.models import ModelOut
 from app.schemas.token import TokenData
-from app.dependencies.auth import get_user_from_headers
 
 router = APIRouter(tags=["Models"])
 
@@ -20,7 +20,9 @@ router = APIRouter(tags=["Models"])
     response_model=dict,
 )
 async def list_models(
-    mine: bool = Query(False, description="Only return models uploaded by the current user"),
+    mine: bool = Query(
+        False, description="Only return models uploaded by the current user"
+    ),
     db: AsyncSession = Depends(get_db),
     user: TokenData = Depends(get_user_from_headers),
 ):
@@ -38,7 +40,9 @@ async def list_models(
 
     return {
         "models": [
-            ModelOut.model_validate(m).serialize(role="admin" if "admin" in user.groups else "user")
+            ModelOut.model_validate(m).serialize(
+                role="admin" if "admin" in user.groups else "user"
+            )
             for m in models
         ]
     }
@@ -68,8 +72,7 @@ async def get_duplicates(
 
     return {
         "duplicates": [
-            ModelOut.model_validate(m).serialize(role="admin")
-            for m in models
+            ModelOut.model_validate(m).serialize(role="admin") for m in models
         ]
     }
 
@@ -88,9 +91,7 @@ async def delete_model(
     """
     Delete a model by ID, if the user is the uploader or has admin role.
     """
-    result = await db.execute(
-        select(ModelMetadata).where(ModelMetadata.id == model_id)
-    )
+    result = await db.execute(select(ModelMetadata).where(ModelMetadata.id == model_id))
     model = result.scalar_one_or_none()
 
     if not model:
@@ -100,7 +101,9 @@ async def delete_model(
     is_owner = str(model.uploader) == str(user.sub)
 
     if not (is_owner or is_admin):
-        raise HTTPException(status_code=403, detail="Not authorized to delete this model")
+        raise HTTPException(
+            status_code=403, detail="Not authorized to delete this model"
+        )
 
     await db.delete(model)
     await db.commit()

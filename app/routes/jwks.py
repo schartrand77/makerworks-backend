@@ -1,21 +1,22 @@
 # app/routes/jwks.py
 
-from fastapi import APIRouter, Depends, Response
-from fastapi.responses import JSONResponse
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, ec
+import logging
+
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from jwcrypto import jwk
 
 from app.config.settings import settings
-from app.models import User
 from app.dependencies.auth import get_user_from_headers
-
-import logging
+from app.models import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
 
 # 🔷 Load and cache JWK at startup
 def load_jwk():
@@ -24,9 +25,9 @@ def load_jwk():
             f.read(), password=None, backend=default_backend()
         )
 
-    if isinstance(private_key, rsa.RSAPrivateKey):
-        public_key = private_key.public_key()
-    elif isinstance(private_key, ec.EllipticCurvePrivateKey):
+    if isinstance(private_key, rsa.RSAPrivateKey) or isinstance(
+        private_key, ec.EllipticCurvePrivateKey
+    ):
         public_key = private_key.public_key()
     else:
         raise ValueError("Unsupported key type for JWKS")

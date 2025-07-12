@@ -1,13 +1,13 @@
-import os
 import platform
-import psutil
 import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
 
+import psutil
+
 from .boot_messages import random_boot_message
-from .logging import logger, configure_colorlog
+from .logging import configure_colorlog, logger
 
 # Record startup time
 START_TIME = time.time()
@@ -55,9 +55,13 @@ def detect_gpus() -> list[str]:
     try:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True, text=True, check=True
+            capture_output=True,
+            text=True,
+            check=True,
         )
-        gpus = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+        gpus = [
+            line.strip() for line in result.stdout.strip().splitlines() if line.strip()
+        ]
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
@@ -65,13 +69,21 @@ def detect_gpus() -> list[str]:
     if not gpus:
         try:
             import torch
+
             if torch.cuda.is_available():
-                gpus = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+                gpus = [
+                    torch.cuda.get_device_name(i)
+                    for i in range(torch.cuda.device_count())
+                ]
         except ImportError:
             pass
 
     # macOS Apple Silicon
-    if not gpus and platform.system() == "Darwin" and platform.machine().startswith("arm"):
+    if (
+        not gpus
+        and platform.system() == "Darwin"
+        and platform.machine().startswith("arm")
+    ):
         gpus.append("Apple Metal")
 
     return gpus
@@ -90,14 +102,14 @@ def system_snapshot() -> dict:
         "uptime": str(timedelta(seconds=int(uptime_td.total_seconds()))),
         "host": platform.node(),
         "cpu_logical": psutil.cpu_count(),
-        "mem_gb": psutil.virtual_memory().total / (1024 ** 3),
+        "mem_gb": psutil.virtual_memory().total / (1024**3),
         "gpus": detect_gpus(),
         "statuses": {
             "PostgreSQL": {"connected": True},
             "Redis": {"connected": True},
             "Authentik": {"connected": True},
-            "Frontend": {"connected": True}
-        }
+            "Frontend": {"connected": True},
+        },
     }
     return snapshot
 

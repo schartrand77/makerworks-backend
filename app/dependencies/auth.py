@@ -1,11 +1,13 @@
-from fastapi import Depends, Header, HTTPException, Request, Query
+import os
+
+import httpx
+from fastapi import Depends, Header, HTTPException, Query, Request
+from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+
 from app.db.database import get_db
 from app.models.models import User
-import os
-import httpx
-from jose import jwt, JWTError
 
 AUTHENTIK_USERINFO_URL = os.getenv(
     "AUTHENTIK_USERINFO_URL",
@@ -34,14 +36,18 @@ async def get_current_user(
     if not email:
         token = request.headers.get("Authorization")
         if not token or not token.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing authentication headers or token.")
+            raise HTTPException(
+                status_code=401, detail="Missing authentication headers or token."
+            )
         token = token.split("Bearer ")[1]
 
         # Decode token with jose
         try:
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             email = payload.get("email")
-            username = payload.get("username") or payload.get("preferred_username") or email
+            username = (
+                payload.get("username") or payload.get("preferred_username") or email
+            )
             groups_raw = ",".join(payload.get("groups", []))
         except JWTError:
             # If local decode fails, fallback to Authentik userinfo endpoint
@@ -49,15 +55,17 @@ async def get_current_user(
                 try:
                     response = await client.get(
                         AUTHENTIK_USERINFO_URL,
-                        headers={"Authorization": f"Bearer {token}"}
+                        headers={"Authorization": f"Bearer {token}"},
                     )
                     response.raise_for_status()
                     data = response.json()
                     email = data.get("email")
                     username = data.get("username")
                     groups_raw = ",".join(data.get("groups", []))
-                except Exception:
-                    raise HTTPException(status_code=401, detail="Invalid Authentik token.")
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=401, detail="Invalid Authentik token."
+                    ) from e
 
     groups = parse_groups(groups_raw)
 
@@ -70,7 +78,11 @@ async def get_current_user(
             email=email,
             username=username,
             is_verified=True,
-            role="admin" if "MakerWorks-Admin" in groups or email in ADMIN_EMAILS else "user",
+            role=(
+                "admin"
+                if "MakerWorks-Admin" in groups or email in ADMIN_EMAILS
+                else "user"
+            ),
         )
         db.add(user)
         await db.commit()
@@ -89,20 +101,23 @@ async def get_current_user(
 
 async def get_user_from_headers(authorization: str = Header(...)) -> dict:
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid Authorization header format.")
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization header format."
+        )
 
     token = authorization.split("Bearer ")[1]
 
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
-                AUTHENTIK_USERINFO_URL,
-                headers={"Authorization": f"Bearer {token}"}
+                AUTHENTIK_USERINFO_URL, headers={"Authorization": f"Bearer {token}"}
             )
             response.raise_for_status()
             return response.json()
-        except Exception:
-            raise HTTPException(status_code=401, detail="Invalid or expired token.")
+        except Exception as e:
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired token."
+            ) from e
 
 
 async def get_user_from_token_query(token: str = Query(...)) -> dict:
@@ -113,13 +128,14 @@ async def get_user_from_token_query(token: str = Query(...)) -> dict:
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
-                AUTHENTIK_USERINFO_URL,
-                headers={"Authorization": token}
+                AUTHENTIK_USERINFO_URL, headers={"Authorization": token}
             )
             response.raise_for_status()
             return response.json()
-        except Exception:
-            raise HTTPException(status_code=401, detail="Invalid or missing token in query")
+        except Exception as e:
+            raise HTTPException(
+                status_code=401, detail="Invalid or missing token in query"
+            ) from e
 
 
 async def get_current_admin_user(user: User = Depends(get_current_user)) -> User:

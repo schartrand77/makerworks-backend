@@ -1,14 +1,15 @@
 # app/routes/admin.py
 
+import os
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-import httpx
-import os
 
-from app.models.models import ModelMetadata
 from app.db.database import get_db
 from app.dependencies.auth import admin_required
+from app.models.models import ModelMetadata
 from app.services.auth_service import log_action
 from app.utils.logging import logger  # make sure logger is imported
 
@@ -59,20 +60,22 @@ async def get_all_users(admin=Depends(admin_required)):
 
             return users
 
-        except httpx.RequestError:
-            raise HTTPException(status_code=500, detail="Unable to reach Authentik")
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=500, detail="Unable to reach Authentik"
+            ) from e
         except httpx.HTTPStatusError as e:
             raise HTTPException(
                 status_code=e.response.status_code,
                 detail="Failed to fetch users from Authentik",
-            )
+            ) from e
 
 
 @router.post("/users/{user_id}/promote")
 async def promote_user(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
-    await log_action(admin.sub, "promote_user", user_id, db)
+    await log_action(admin.sub, "promote_user", int(user_id), db)
     return {
         "status": "noop",
         "message": "Promotion should be done in Authentik Groups or Roles",
@@ -83,7 +86,7 @@ async def promote_user(
 async def demote_user(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
-    await log_action(admin.sub, "demote_user", user_id, db)
+    await log_action(admin.sub, "demote_user", int(user_id), db)
     return {
         "status": "noop",
         "message": "Demotion should be handled via Authentik roles",
@@ -94,7 +97,7 @@ async def demote_user(
 async def delete_user(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
-    await log_action(admin.sub, "delete_user", user_id, db)
+    await log_action(admin.sub, "delete_user", int(user_id), db)
     return {
         "status": "noop",
         "message": "Deletion must be performed via Authentik UI/API",
@@ -105,7 +108,7 @@ async def delete_user(
 async def force_password_reset(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
-    await log_action(admin.sub, "force_password_reset", user_id, db)
+    await log_action(admin.sub, "force_password_reset", int(user_id), db)
     return {
         "status": "noop",
         "message": "Password reset must be triggered in Authentik",
@@ -128,7 +131,11 @@ async def get_discord_config(admin=Depends(admin_required)):
 
 
 @router.post("/discord/config")
-async def update_discord_config(request: Request, admin=Depends(admin_required)):
+async def update_discord_config(
+    request: Request,
+    admin=Depends(admin_required),
+    db: AsyncSession = Depends(get_db),
+):
     data = await request.json()
     discord_config.update(
         {
@@ -137,7 +144,7 @@ async def update_discord_config(request: Request, admin=Depends(admin_required))
             "feed_enabled": data.get("feed_enabled", discord_config["feed_enabled"]),
         }
     )
-    await log_action(admin.sub, "update_discord_config", payload=data)
+    await log_action(admin.sub, "update_discord_config", int(admin.sub), db)
     return {"status": "ok", "message": "Discord configuration updated."}
 
 

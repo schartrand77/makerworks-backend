@@ -1,9 +1,11 @@
 # app/middleware/cors.py
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import logging
 import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 
 def setup_cors(app: FastAPI) -> None:
     # Load from env if set, fallback to defaults
@@ -19,7 +21,9 @@ def setup_cors(app: FastAPI) -> None:
     # 🚨 Fail fast if required dev origin is not present
     required_origin = "http://localhost:5173"
     if required_origin not in allowed_origins:
-        raise RuntimeError(f"🚨 CORS misconfiguration: {required_origin} is missing from allowed_origins")
+        raise RuntimeError(
+            f"🚨 CORS misconfiguration: {required_origin} is missing from allowed_origins"
+        )
 
     logging.info("✅ Setting up CORS middleware with the following origins:")
     for origin in allowed_origins:

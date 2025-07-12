@@ -1,10 +1,9 @@
 import os
 import socket
-from dotenv import load_dotenv
-from typing import List
 from functools import lru_cache
 
-from pydantic import Field, AnyHttpUrl, model_validator
+from dotenv import load_dotenv
+from pydantic import AnyHttpUrl, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ─────────────────────────────────────────────
@@ -75,11 +74,15 @@ class Settings(BaseSettings):
 
     @property
     def authentik_url(self) -> str:
-        hostname = self.raw_authentik_url.replace("http://", "").replace("https://", "").split(":")[0]
+        hostname = (
+            self.raw_authentik_url.replace("http://", "")
+            .replace("https://", "")
+            .split(":")[0]
+        )
         try:
             socket.gethostbyname(hostname)
             return self.raw_authentik_url
-        except socket.error:
+        except OSError:
             return "http://localhost:9000"  # fallback for dev
 
     # ────────────────
@@ -98,13 +101,15 @@ class Settings(BaseSettings):
     # CORS
     # ────────────────
     cors_origins_raw: str = Field(default="", alias="CORS_ORIGINS")
-    cors_origins: List[AnyHttpUrl] = []
+    cors_origins: list[AnyHttpUrl] = []
 
     @model_validator(mode="after")
     def parse_cors_origins(cls, values):
         raw = values.cors_origins_raw
         if raw:
-            values.cors_origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+            values.cors_origins = [
+                origin.strip() for origin in raw.split(",") if origin.strip()
+            ]
         else:
             values.cors_origins = []
         return values
@@ -115,7 +120,7 @@ class Settings(BaseSettings):
     metrics_api_key: str = Field(..., alias="METRICS_API_KEY")
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     return Settings()
 

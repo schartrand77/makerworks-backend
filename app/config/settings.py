@@ -1,8 +1,8 @@
 # app/config/settings.py
 
 from functools import lru_cache
-from typing import List, Union
-from pydantic import Field, AnyHttpUrl
+
+from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings
 
 
@@ -28,7 +28,9 @@ class Settings(BaseSettings):
     # ─── JWT ────────────────────────────────────────────────
     jwt_secret: str = Field(..., alias="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
-    private_key_path: str = Field(default="./keys/private.pem", alias="PRIVATE_KEY_PATH")
+    private_key_path: str = Field(
+        default="./keys/private.pem", alias="PRIVATE_KEY_PATH"
+    )
     private_key_kid: str = Field(default="makerworks-key", alias="PRIVATE_KEY_KID")
     auth_audience: str = Field(default="makerworks", alias="AUTH_AUDIENCE")
 
@@ -51,12 +53,16 @@ class Settings(BaseSettings):
     authentik_client_secret: str = Field(..., alias="AUTHENTIK_CLIENT_SECRET")
 
     # ─── CORS ───────────────────────────────────────────────
-    raw_cors_origins: Union[str, List[AnyHttpUrl]] = Field(default="", alias="CORS_ORIGINS")
+    raw_cors_origins: str | list[AnyHttpUrl] = Field(default="", alias="CORS_ORIGINS")
 
     @property
-    def cors_origins(self) -> List[str]:
+    def cors_origins(self) -> list[str]:
         if isinstance(self.raw_cors_origins, str):
-            return [origin.strip() for origin in self.raw_cors_origins.split(",") if origin.strip()]
+            return [
+                origin.strip()
+                for origin in self.raw_cors_origins.split(",")
+                if origin.strip()
+            ]
         return list(self.raw_cors_origins)
 
     model_config = {
@@ -66,7 +72,7 @@ class Settings(BaseSettings):
     }
 
 
-@lru_cache()
+@lru_cache
 def get_settings():
     return Settings()
 

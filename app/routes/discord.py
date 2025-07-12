@@ -1,16 +1,20 @@
 # app/routes/discord.py
 
-from fastapi import (
-    APIRouter, HTTPException, Request, Response, status,
-    WebSocket, WebSocketDisconnect, Depends
-)
-from typing import List, Dict, Set
-import httpx
-import os
-import logging
 import asyncio
+import logging
+import os
 
-from app.dependencies.auth import get_user_from_headers, admin_required
+import httpx
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
+
+from app.dependencies.auth import admin_required, get_user_from_headers
 from app.models import User
 
 router = APIRouter()
@@ -30,13 +34,13 @@ if not DISCORD_BOT_TOKEN:
 # ──────────────────────────────────────────────
 # WebSocket client tracking
 # ──────────────────────────────────────────────
-active_connections: Set[WebSocket] = set()
+active_connections: set[WebSocket] = set()
 
 
 # ──────────────────────────────────────────────
 # Fetch recent messages from the Discord API
 # ──────────────────────────────────────────────
-async def fetch_discord_messages(limit: int = 5) -> List[Dict]:
+async def fetch_discord_messages(limit: int = 5) -> list[dict]:
     if not DISCORD_CHANNEL_ID or not DISCORD_BOT_TOKEN:
         logger.error("Missing DISCORD_CHANNEL_ID or DISCORD_BOT_TOKEN")
         raise HTTPException(status_code=500, detail="Missing Discord config")
@@ -46,27 +50,32 @@ async def fetch_discord_messages(limit: int = 5) -> List[Dict]:
 
     async with httpx.AsyncClient() as client:
         try:
-            res = await client.get(url, headers=headers, params={"limit": limit}, timeout=5.0)
+            res = await client.get(
+                url, headers=headers, params={"limit": limit}, timeout=5.0
+            )
             res.raise_for_status()
             messages = res.json()
             return [
                 {
                     "author": msg.get("author", {}).get("username", "Unknown"),
-                    "content": msg.get("content", "")
+                    "content": msg.get("content", ""),
                 }
                 for msg in messages
             ]
         except httpx.HTTPStatusError as e:
-            logger.error(f"Discord API HTTP error: {e.response.status_code} - {e.response.text}")
-            raise HTTPException(status_code=502, detail="Discord API error")
+            logger.error(
+                f"Discord API HTTP error: {e.response.status_code} - {e.response.text}"
+            )
+            raise HTTPException(status_code=502, detail="Discord API error") from e
         except Exception as e:
             logger.exception("Unhandled exception while fetching Discord feed")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 # ──────────────────────────────────────────────
 # Public Routes
 # ──────────────────────────────────────────────
+
 
 @router.get("/discord/feed", status_code=200)
 async def get_discord_feed():
@@ -103,7 +112,7 @@ async def websocket_discord_feed(websocket: WebSocket):
     except WebSocketDisconnect:
         active_connections.discard(websocket)
         logger.info("WebSocket client disconnected cleanly")
-    except Exception as e:
+    except Exception:
         logger.exception("Unhandled error in WebSocket feed loop")
 
 
@@ -111,9 +120,12 @@ async def websocket_discord_feed(websocket: WebSocket):
 # Admin Routes
 # ──────────────────────────────────────────────
 
-@router.post("/notifications/discord", status_code=204, dependencies=[Depends(admin_required)])
+
+@router.post(
+    "/notifications/discord", status_code=204, dependencies=[Depends(admin_required)]
+)
 async def save_webhook(
-    payload: Dict[str, str],
+    payload: dict[str, str],
     user: User = Depends(get_user_from_headers),
 ):
     url = payload.get("webhook_url")
@@ -128,7 +140,7 @@ async def save_webhook(
 
 @router.post("/notifications/discord/send", dependencies=[Depends(admin_required)])
 async def post_discord_message(
-    payload: Dict[str, str],
+    payload: dict[str, str],
     user: User = Depends(get_user_from_headers),
 ):
     message = payload.get("message")
@@ -140,13 +152,17 @@ async def post_discord_message(
 
     async with httpx.AsyncClient() as client:
         try:
-            res = await client.post(DISCORD_WEBHOOK_URL, json={"content": message}, timeout=5.0)
+            res = await client.post(
+                DISCORD_WEBHOOK_URL, json={"content": message}, timeout=5.0
+            )
             res.raise_for_status()
             logger.info(f"[admin:{user.email}] sent message to Discord")
             return {"status": "ok"}
         except httpx.HTTPStatusError as e:
-            logger.error(f"Webhook post error: {e.response.status_code} - {e.response.text}")
-            raise HTTPException(status_code=502, detail="Discord webhook error")
+            logger.error(
+                f"Webhook post error: {e.response.status_code} - {e.response.text}"
+            )
+            raise HTTPException(status_code=502, detail="Discord webhook error") from e
         except Exception as e:
             logger.exception("Failed to post Discord message")
-            raise HTTPException(status_code=500, detail="Internal error")
+            raise HTTPException(status_code=500, detail="Internal error") from e

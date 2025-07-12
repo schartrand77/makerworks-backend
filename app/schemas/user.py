@@ -43,6 +43,7 @@ class UpdateUserProfile(BaseModel):
     Inbound user profile updates.
     Fields are optional and validated.
     """
+
     name: str | None
     bio: str | None
     language: str | None  # NEW: allow updating language

@@ -1,4 +1,5 @@
-import sys, os
+import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -24,17 +25,17 @@ os.environ.setdefault("AUTHENTIK_ISSUER", "http://auth")
 os.environ.setdefault("AUTHENTIK_CLIENT_ID", "client")
 os.environ.setdefault("AUTHENTIK_CLIENT_SECRET", "secret")
 
-from fastapi import FastAPI
+import importlib.util
+from pathlib import Path
+
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.db.session import get_db
-
-import importlib.util
-from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
     "app.routes.auth",

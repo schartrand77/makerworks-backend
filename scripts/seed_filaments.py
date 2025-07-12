@@ -3,10 +3,12 @@
 import asyncio
 import logging
 
-from app.models import Filament
 from app.db.session import async_session_maker
+from app.models import Filament
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger("seed-filaments")
 
 
@@ -15,10 +17,9 @@ async def seed_filaments():
         # Clear any existing filaments with matching names
         await db.execute(
             Filament.__table__.delete().where(
-                Filament.name.in_([
-                    "Bambu PLA Matte Charcoal",
-                    "Bambu PLA Matte Sakura Pink"
-                ])
+                Filament.name.in_(
+                    ["Bambu PLA Matte Charcoal", "Bambu PLA Matte Sakura Pink"]
+                )
             )
         )
 

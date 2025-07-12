@@ -1,70 +1,62 @@
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 class FilamentCreate(BaseModel):
     name: str
     type: str
-    subtype: Optional[str] = None
-    surface: Optional[str] = None
-    texture: Optional[str] = None
+    subtype: str | None = None
+    surface: str | None = None
+    texture: str | None = None
 
     color: str = Field(..., alias="colorHex")
-    color_name: Optional[str] = Field(None, alias="colorName")
+    color_name: str | None = Field(None, alias="colorName")
 
     price_per_kg: float = Field(..., alias="pricePerKg")
-    currency: Optional[str] = "USD"
-    description: Optional[str] = None
+    currency: str | None = "USD"
+    description: str | None = None
 
-    is_active: Optional[bool] = True
-    is_biodegradable: Optional[bool] = None
+    is_active: bool | None = True
+    is_biodegradable: bool | None = None
 
-    model_config = {
-        "populate_by_name": True
-    }
+    model_config = {"populate_by_name": True}
 
 
 class FilamentUpdate(BaseModel):
-    name: Optional[str] = None
-    type: Optional[str] = None
-    subtype: Optional[str] = None
-    surface: Optional[str] = None
-    texture: Optional[str] = None
+    name: str | None = None
+    type: str | None = None
+    subtype: str | None = None
+    surface: str | None = None
+    texture: str | None = None
 
-    color: Optional[str] = Field(None, alias="colorHex")
-    color_name: Optional[str] = Field(None, alias="colorName")
+    color: str | None = Field(None, alias="colorHex")
+    color_name: str | None = Field(None, alias="colorName")
 
-    price_per_kg: Optional[float] = Field(None, alias="pricePerKg")
-    currency: Optional[str] = None
-    description: Optional[str] = None
+    price_per_kg: float | None = Field(None, alias="pricePerKg")
+    currency: str | None = None
+    description: str | None = None
 
-    is_active: Optional[bool] = None
-    is_biodegradable: Optional[bool] = None
+    is_active: bool | None = None
+    is_biodegradable: bool | None = None
 
-    model_config = {
-        "populate_by_name": True
-    }
+    model_config = {"populate_by_name": True}
 
 
 class FilamentOut(BaseModel):
     id: int
     name: str
     type: str
-    subtype: Optional[str] = None
-    surface: Optional[str] = None
-    texture: Optional[str] = None
+    subtype: str | None = None
+    surface: str | None = None
+    texture: str | None = None
 
     color: str = Field(..., alias="colorHex")
-    color_name: Optional[str] = Field(None, alias="colorName")
+    color_name: str | None = Field(None, alias="colorName")
 
     price_per_kg: float = Field(..., alias="pricePerKg")
-    currency: Optional[str] = "USD"
-    description: Optional[str] = None
+    currency: str | None = "USD"
+    description: str | None = None
 
-    is_active: Optional[bool] = True
-    is_biodegradable: Optional[bool] = None
+    is_active: bool | None = True
+    is_biodegradable: bool | None = None
 
-    model_config = {
-        "from_attributes": True,
-        "populate_by_name": True
-    }
+    model_config = {"from_attributes": True, "populate_by_name": True}

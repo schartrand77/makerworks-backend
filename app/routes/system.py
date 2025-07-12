@@ -1,25 +1,24 @@
 # app/routes/system.py
 
+import logging
 import os
 import platform
-import socket
-import logging
 import random
+import socket
 from datetime import datetime
 
-import psutil
 import asyncpg
+import psutil
 import pynvml
 import redis.asyncio as redis
-
-from fastapi import APIRouter, Request, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from app.config.settings import settings
-from app.utils.system_info import get_uptime, START_TIME
-from app.schemas.system import SystemStatus
 from app.dependencies.auth import get_user_from_headers
+from app.schemas.system import SystemStatus
 from app.schemas.token import TokenData
+from app.utils.system_info import START_TIME, get_uptime
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["System"])
@@ -79,11 +78,15 @@ frontend_handshake_messages = [
     "📲 OAuth2 dance complete. The grid is yours.",
 ]
 
-@router.get("/status", summary="System diagnostics and boot info", response_model=SystemStatus)
+
+@router.get(
+    "/status", summary="System diagnostics and boot info", response_model=SystemStatus
+)
 async def system_status():
     try:
         import re
-        raw_dsn = re.sub(r'\+asyncpg', '', settings.async_database_url)
+
+        raw_dsn = re.sub(r"\+asyncpg", "", settings.async_database_url)
         conn = await asyncpg.connect(raw_dsn)
         await conn.execute("SELECT 1")
         await conn.close()
@@ -159,6 +162,7 @@ async def ping():
 # ───────────────────────────────────────────────
 # Authenticated frontend-backend handshake
 # ───────────────────────────────────────────────
+
 
 @router.post("/handshake", summary="Authenticated frontend-backend handshake (POST)")
 async def frontend_handshake(user: TokenData = Depends(get_user_from_headers)):

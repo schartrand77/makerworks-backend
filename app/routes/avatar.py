@@ -1,19 +1,21 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from sqlalchemy.orm import Session
-from starlette.responses import JSONResponse
-from app.db.database import get_db
-from app.models import User
-from app.dependencies.auth import get_user_from_headers
-from app.schemas.token import TokenData
-from app.schemas.user import AvatarUploadResponse
-from app.config.settings import settings
-from uuid import uuid4
-from datetime import datetime
-from pathlib import Path
-from PIL import Image
+import io
 import logging
 import tempfile
-import io
+from datetime import datetime
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from PIL import Image
+from sqlalchemy.orm import Session
+from starlette.responses import JSONResponse
+
+from app.config.settings import settings
+from app.db.database import get_db
+from app.dependencies.auth import get_user_from_headers
+from app.models import User
+from app.schemas.token import TokenData
+from app.schemas.user import AvatarUploadResponse
 
 router = APIRouter()
 
@@ -29,14 +31,17 @@ ALLOWED_IMAGE_MIME = {
     "image/webp": ".webp",
 }
 
+
 def safe_mkdir(path: Path):
     try:
         path.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         logging.error(f"[AVATAR] Could not create avatar dir {path}: {e}")
-        raise HTTPException(500, f"Avatar storage error: {e}")
+        raise HTTPException(500, f"Avatar storage error: {e}") from e
+
 
 safe_mkdir(AVATAR_DIR)
+
 
 @router.post("/avatar", response_model=AvatarUploadResponse)
 async def upload_avatar(
@@ -54,7 +59,10 @@ async def upload_avatar(
     # Check file size
     contents = await file.read()
     if len(contents) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(400, detail=f"Avatar file too large (max {MAX_FILE_SIZE_BYTES//1024//1024} MB)")
+        raise HTTPException(
+            400,
+            detail=f"Avatar file too large (max {MAX_FILE_SIZE_BYTES//1024//1024} MB)",
+        )
 
     ext = ALLOWED_IMAGE_MIME[content_type]
     avatar_uuid = uuid4().hex
@@ -69,19 +77,23 @@ async def upload_avatar(
         image = image.convert("RGB")
         image.thumbnail(MAX_AVATAR_SIZE)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext, dir=AVATAR_DIR) as tmp:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=ext, dir=AVATAR_DIR
+        ) as tmp:
             image.save(tmp.name, optimize=True, quality=85)
             Path(tmp.name).replace(save_path)
 
         thumb = image.copy()
         thumb.thumbnail(THUMB_SIZE)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext, dir=AVATAR_DIR) as tmp_thumb:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=ext, dir=AVATAR_DIR
+        ) as tmp_thumb:
             thumb.save(tmp_thumb.name, optimize=True, quality=85)
             Path(tmp_thumb.name).replace(thumb_path)
 
     except Exception as e:
         logging.error(f"[AVATAR] Failed to process image: {e}")
-        raise HTTPException(500, detail="Failed to process avatar image")
+        raise HTTPException(500, detail="Failed to process avatar image") from e
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -111,6 +123,7 @@ async def upload_avatar(
         uploaded_at=user.avatar_updated_at,
     )
 
+
 @router.get("/avatar/{user_id}")
 async def get_avatar_url(user_id: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
@@ -124,4 +137,5 @@ async def get_avatar_url(user_id: str, db: Session = Depends(get_db)):
         {
             "avatar_url": f"{BASE_URL}{user.avatar_url}?t={ts}",
             "thumbnail_url": f"{BASE_URL}{thumb_url}?t={ts}",
-        }    )
+        }
+    )

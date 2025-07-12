@@ -9,8 +9,8 @@ from .bambu_connect import router as bambu_router
 from .cart import router as cart_router
 from .checkout import router as checkout_router
 from .discord import router as discord_router
-from .filaments import router as filaments_router
 from .favorites import router as favorites_router
+from .filaments import router as filaments_router
 from .models import router as models_router
 from .system import router as system_router
 from .upload import router as upload_router
