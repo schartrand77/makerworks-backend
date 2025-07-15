@@ -24,7 +24,9 @@ if JWT_ALGORITHM == "RS256":
         with open(PUBLIC_KEY_PATH, "rb") as f:
             JWT_SECRET = f.read()
     except Exception as e:
-        raise RuntimeError(f"❌ Failed to load RSA public key from {PUBLIC_KEY_PATH}: {e}")
+        raise RuntimeError(
+            f"❌ Failed to load RSA public key from {PUBLIC_KEY_PATH}: {e}"
+        ) from e
 else:
     JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
 

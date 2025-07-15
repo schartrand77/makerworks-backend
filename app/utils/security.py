@@ -25,7 +25,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # JWT token setup
 # ────────────────────────────────────────────────────────────────────────────────
 
-SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-dev-key")
+SECRET_KEY = os.getenv("JWT_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET environment variable must be set")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
