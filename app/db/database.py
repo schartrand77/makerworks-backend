@@ -19,7 +19,8 @@ DATABASE_URL = os.getenv(
 )
 
 logger = logging.getLogger("makerworks.database")
-logger.info(f"[DB] Loaded ASYNC_DATABASE_URL = {DATABASE_URL}")
+# Avoid logging full connection string to prevent credential leakage
+logger.info("[DB] Loaded database configuration")
 
 # ───────────────────────────────────────────────
 # Engine & Session

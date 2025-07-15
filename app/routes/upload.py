@@ -102,7 +102,7 @@ async def upload_model(
         name=name or file.filename,
         description=description,
         filename=file.filename,
-        path=str(save_path),
+        filepath=str(save_path),
         uploader_id=user_id,
         uploaded_at=datetime.utcnow(),
         geometry_hash=None,

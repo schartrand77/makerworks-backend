@@ -2,7 +2,7 @@
 set -e
 
 echo "📦 Running Alembic migrations..."
-python scripts/upgrade.py || {
+alembic upgrade head || {
   echo "❌ Alembic migration failed"
   exit 1
 }

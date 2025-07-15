@@ -1,9 +1,8 @@
 # app/config/settings.py
 
 from functools import lru_cache
-from typing import Optional, Union, List
 
-from pydantic import AnyHttpUrl, Field, EmailStr
+from pydantic import AnyHttpUrl, EmailStr, Field
 from pydantic_settings import BaseSettings
 
 
@@ -27,7 +26,7 @@ class Settings(BaseSettings):
     redis_url: str = Field("redis://localhost:6379", alias="REDIS_URL")
 
     # ─── JWT ────────────────────────────────────────────────
-    jwt_secret: Optional[str] = Field(None, alias="JWT_SECRET")  # if RS256 is used instead
+    jwt_secret: str | None = Field(None, alias="JWT_SECRET")  # if RS256 is used instead
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     private_key_path: str = Field(default="./keys/private.pem", alias="PRIVATE_KEY_PATH")
     public_key_path: str = Field(default="./keys/public.pem", alias="PUBLIC_KEY_PATH")
@@ -53,17 +52,17 @@ class Settings(BaseSettings):
     authentik_client_secret: str = Field(..., alias="AUTHENTIK_CLIENT_SECRET")
 
     # ─── CORS ───────────────────────────────────────────────
-    raw_cors_origins: Union[str, List[AnyHttpUrl]] = Field(default="", alias="CORS_ORIGINS")
+    raw_cors_origins: str | list[AnyHttpUrl] = Field(default="", alias="CORS_ORIGINS")
 
     # ─── Bambu ──────────────────────────────────────────────
-    bambu_ip: Optional[AnyHttpUrl] = Field(None, alias="BAMBU_IP")
+    bambu_ip: AnyHttpUrl | None = Field(None, alias="BAMBU_IP")
 
     # ─── Permanent Admin ───────────────────────────────────
-    permanent_admin_email: Optional[EmailStr] = Field(None, alias="PERMANENT_ADMIN_EMAIL")
-    permanent_admin_password: Optional[str] = Field(None, alias="PERMANENT_ADMIN_PASSWORD")
+    permanent_admin_email: EmailStr | None = Field(None, alias="PERMANENT_ADMIN_EMAIL")
+    permanent_admin_password: str | None = Field(None, alias="PERMANENT_ADMIN_PASSWORD")
 
     @property
-    def cors_origins(self) -> List[str]:
+    def cors_origins(self) -> list[str]:
         if isinstance(self.raw_cors_origins, str):
             return [
                 origin.strip()

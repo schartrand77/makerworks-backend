@@ -1,6 +1,6 @@
 import logging
 
-import requests  # type: ignore[import-untyped]
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -50,10 +50,11 @@ async def x1c_status(
     """
     url = f"http://{ip}/access/printer/status"
     try:
-        resp = requests.get(url, headers=_make_headers(access_token), timeout=5)
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=_make_headers(access_token), timeout=5)
         resp.raise_for_status()
         return resp.json()
-    except requests.RequestException as e:
+    except httpx.RequestError as e:
         logger.error(f"X1C status fetch failed: {e}")
         raise HTTPException(
             status_code=502, detail="Could not fetch status from printer."
@@ -89,12 +90,16 @@ async def x1c_command(
 
     try:
         logger.info(f"Sending X1C command: {cmd.command} → {url}")
-        resp = requests.post(
-            url, headers=_make_headers(cmd.access_token), json=cmd.payload, timeout=5
-        )
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                url,
+                headers=_make_headers(cmd.access_token),
+                json=cmd.payload,
+                timeout=5,
+            )
         resp.raise_for_status()
         return {"status": "success", "response": resp.json()}
-    except requests.RequestException as e:
+    except httpx.RequestError as e:
         logger.error(f"X1C command failed: {e}")
         raise HTTPException(status_code=502, detail=str(e)) from e
 
@@ -110,10 +115,11 @@ async def x1c_info(
     """
     url = f"http://{ip}/access/printer/info"
     try:
-        resp = requests.get(url, headers=_make_headers(access_token), timeout=5)
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=_make_headers(access_token), timeout=5)
         resp.raise_for_status()
         return resp.json()
-    except requests.RequestException as e:
+    except httpx.RequestError as e:
         logger.error(f"X1C info fetch failed: {e}")
         raise HTTPException(
             status_code=502, detail="Could not fetch printer info."

@@ -16,6 +16,7 @@ from app.routes import (
     cart,
     checkout,
     filaments,
+    jwks,
     system,
     upload,
     users,
@@ -110,6 +111,7 @@ mount(filaments.router, "/api/v1/filaments", ["filaments"])
 mount(admin.router, "/api/v1/admin", ["admin"])
 mount(cart.router, "/api/v1/cart", ["cart"])
 mount(checkout.router, "/api/v1/checkout", ["checkout"])
+mount(jwks.router, "", ["jwks"])
 
 
 # ─── Print Route Table ───────────────────────────────────────
