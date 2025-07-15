@@ -13,9 +13,20 @@ AUTHENTIK_USERINFO_URL = os.getenv(
     "AUTHENTIK_USERINFO_URL",
     "http://localhost:9000/application/o/userinfo/",
 )
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
+
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",")
+
+# ─── Load JWT Verification Key ──────────────────────────────
+if JWT_ALGORITHM == "RS256":
+    PUBLIC_KEY_PATH = os.getenv("PUBLIC_KEY_PATH", "/app/keys/public.pem")
+    try:
+        with open(PUBLIC_KEY_PATH, "rb") as f:
+            JWT_SECRET = f.read()
+    except Exception as e:
+        raise RuntimeError(f"❌ Failed to load RSA public key from {PUBLIC_KEY_PATH}: {e}")
+else:
+    JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
 
 
 def parse_groups(groups_raw: str) -> list[str]:

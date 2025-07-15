@@ -13,10 +13,7 @@ def setup_cors(app: FastAPI) -> None:
     if raw_origins:
         allowed_origins = [origin.strip() for origin in raw_origins.split(",")]
     else:
-        allowed_origins = [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ]
+        allowed_origins = [*]
 
     # 🚨 Fail fast if required dev origin is not present
     required_origin = "http://localhost:5173"

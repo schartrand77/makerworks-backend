@@ -1,6 +1,9 @@
 [tool.poetry]
 package-mode = false
 
+[tool.poetry.group.dev.dependencies]
+alembic = "^1.16.4"
+
 [project]
 name = "makerworks-backend"
 version = "0.1.0"
