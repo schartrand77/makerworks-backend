@@ -22,12 +22,11 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, validates, DeclarativeBase
+from sqlalchemy.orm import relationship, validates
+from app.db.base import Base
 
 
 # Base declarative class
-class Base(DeclarativeBase):
-    pass
 
 
 class User(Base):
@@ -119,15 +118,36 @@ class Favorite(Base):
 class Filament(Base):
     __tablename__ = "filaments"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False, index=True)
-    category = Column(String, nullable=False)             # e.g., PLA, PETG
-    type = Column(String, nullable=False)                 # e.g., Matte, Silk
-    color_name = Column(String, nullable=False)           # e.g., Scarlet Red
-    color_hex = Column(String(7), nullable=False)         # e.g., #FF0000
+    id = Column(String, primary_key=True)
+    category = Column(String, nullable=True)
+    type = Column(String, nullable=True)
+    name = Column(String, nullable=True)
+    color_name = Column(String, nullable=True)
+    color_hex = Column(String(7), nullable=True)
     price_per_kg = Column(Float, nullable=False)
-    surface_texture = Column(String, nullable=True)       # e.g., Glossy, Matte
+    surface_texture = Column(String, nullable=True)
     is_biodegradable = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        if "color" in kwargs and "color_hex" not in kwargs:
+            kwargs["color_hex"] = kwargs.pop("color")
+        super().__init__(**kwargs)
+
+
+class FilamentPricing(Base):
+    __tablename__ = "filament_pricing"
+
+    id = Column(String, primary_key=True)
+    filament_id = Column(String, ForeignKey("filaments.id"), nullable=False)
+    price_per_gram = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    filament = relationship("Filament")
+
+    def __repr__(self):
+        return f"<FilamentPricing id={self.id} filament_id={self.filament_id} price_per_gram={self.price_per_gram}>"
 
     def __repr__(self):
         return f"<Filament id={self.id} category={self.category} type={self.type} color={self.color_name}>"
@@ -136,24 +156,48 @@ class Filament(Base):
 class ModelMetadata(Base):
     __tablename__ = "models"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
 
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     filename = Column(String, nullable=False)
-    file_url = Column(String, nullable=False)
+    filepath = Column(String, nullable=True)
+    file_url = Column(String, nullable=True)
     thumbnail_url = Column(String, nullable=True)
 
     geometry_hash = Column(String, nullable=True, index=True)
     is_duplicate = Column(Boolean, default=False)
+    volume_mm3 = Column(Float, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="models")
     favorites = relationship("Favorite", back_populates="model", cascade="all, delete-orphan")
 
+    def __init__(self, **kwargs):
+        if "uploader" in kwargs and "user_id" not in kwargs:
+            uploader = kwargs.pop("uploader")
+            kwargs["user_id"] = str(uploader)
+        if "user_id" in kwargs and isinstance(kwargs["user_id"], uuid.UUID):
+            kwargs["user_id"] = str(kwargs["user_id"])
+        super().__init__(**kwargs)
+
     def __repr__(self):
         return f"<ModelMetadata id={self.id} name={self.name} user_id={self.user_id}>"
+
+
+class EstimateSettings(Base):
+    __tablename__ = "estimate_settings"
+
+    id = Column(String, primary_key=True)
+    custom_text_base_cost = Column(Float, default=2.0)
+    custom_text_cost_per_char = Column(Float, default=0.1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (
+            f"<EstimateSettings id={self.id} base_cost={self.custom_text_base_cost} per_char={self.custom_text_cost_per_char}>"
+        )
 
 
 class AuditLog(Base):

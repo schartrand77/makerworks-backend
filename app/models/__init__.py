@@ -1,11 +1,12 @@
 # app/models/__init__.py
 
-from app.models.base import Base
+from app.db.base import Base
 from app.models.models import (
     Estimate,
-    # EstimateSettings,  # commented out if not yet defined
+    EstimateSettings,
     Favorite,
     Filament,
+    FilamentPricing,
     ModelMetadata,
     User,
 )
@@ -16,9 +17,10 @@ Model3D = ModelMetadata
 __all__ = [
     "Base",
     "Estimate",
-    # "EstimateSettings",  # include here if/when implemented
+    "EstimateSettings",
     "Favorite",
     "Filament",
+    "FilamentPricing",
     "Model3D",
     "ModelMetadata",
     "User",
