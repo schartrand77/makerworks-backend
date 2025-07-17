@@ -86,10 +86,9 @@ class Settings(BaseSettings):
             return "http://localhost:9000"  # fallback for dev
 
     # ────────────────
-    # JWT Fallback / Legacy Support
+    # JWT Algorithm (RS256 for Authentik)
     # ────────────────
-    secret_key: str = Field(default="", alias="JWT_SECRET")
-    algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    algorithm: str = Field(default="RS256", alias="JWT_ALGORITHM")
 
     # ────────────────
     # STRIPE

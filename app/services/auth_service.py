@@ -1,11 +1,10 @@
 # app/services/auth_service.py
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from passlib.context import CryptContext
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -15,7 +14,6 @@ from app.models.models import AuditLog, User
 from app.services.redis_service import get_redis
 from app.services.token_blacklist import is_token_blacklisted
 from app.services.token_service import (
-    create_access_token as issue_token,
     verify_token_rs256,
 )
 
@@ -26,7 +24,6 @@ logger = logging.getLogger(__name__)
 # ────────────────────────────────────────────────────────────────────────────────
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/signin")
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 credentials_exception = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -35,40 +32,14 @@ credentials_exception = HTTPException(
 )
 
 # ────────────────────────────────────────────────────────────────────────────────
-# PASSWORD HASHING
-# ────────────────────────────────────────────────────────────────────────────────
-
-
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-# ────────────────────────────────────────────────────────────────────────────────
-# JWT CREATION (via RS256)
-# ────────────────────────────────────────────────────────────────────────────────
-
-
-def create_access_token(
-    user: User, expires_delta: timedelta = timedelta(hours=1)
-) -> str:
-    return issue_token(
-        user_id=str(user.id),
-        email=user.email,
-        role=user.role,
-        expires_delta=expires_delta,
-    )
-
-
-# ────────────────────────────────────────────────────────────────────────────────
 # JWT VERIFICATION (RS256 + Redis JTI Blacklist)
 # ────────────────────────────────────────────────────────────────────────────────
 
 
 async def verify_token(token: str, redis: Redis) -> dict:
+    """
+    Verifies an RS256-signed JWT from Authentik and checks Redis blacklist.
+    """
     try:
         payload = await verify_token_rs256(token)
         jti = payload.get("jti")
@@ -91,13 +62,17 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ) -> User:
+    """
+    Returns the local User record corresponding to the Authentik-authenticated user.
+    """
     payload = await verify_token(token, redis)
     user_id: str | None = payload.get("sub")
 
     if not user_id:
         raise credentials_exception
 
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+    # NOTE: Authentik `sub` is usually a UUID → don’t cast to int.
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -111,7 +86,7 @@ async def get_current_user(
 # ────────────────────────────────────────────────────────────────────────────────
 
 
-async def log_action(admin_id: int, action: str, target_user_id: int, db: AsyncSession):
+async def log_action(admin_id: str, action: str, target_user_id: str, db: AsyncSession):
     logger.info(
         "[log_action] Admin %s performed '%s' on user %s",
         admin_id,

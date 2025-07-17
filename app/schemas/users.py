@@ -1,28 +1,33 @@
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, constr
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Core User Base Schema
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 
 
 class UserBase(BaseModel):
     email: EmailStr = Field(..., example="user@example.com")
-    username: constr(min_length=3, max_length=32) = Field(..., example="printmaster77")  # type: ignore[valid-type]
+    username: constr(min_length=3, max_length=32) = Field(
+        ..., example="printmaster77"
+    )  # type: ignore[valid-type]
 
     model_config = {"from_attributes": True}
 
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Output Schemas
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 
 
 class UserOut(UserBase):
-    id: int = Field(..., example=123)
+    id: UUID = Field(..., example="f47ac10b-58cc-4372-a567-0e02b2c3d479")
     role: Literal["admin", "user"] = Field(..., example="user")
     is_active: bool = Field(default=True)
     is_verified: bool = Field(default=False, example=True)
@@ -43,7 +48,7 @@ class UserOut(UserBase):
 
 
 class PublicUserOut(BaseModel):
-    id: int = Field(..., example=123)
+    id: UUID = Field(..., example="f47ac10b-58cc-4372-a567-0e02b2c3d479")
     username: str = Field(..., example="printmaster77")
     avatar: HttpUrl | None = Field(
         None, example="https://cdn.makerworks.io/avatars/user123.jpg"
@@ -54,9 +59,9 @@ class PublicUserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Update Schemas
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 
 
 class UserUpdate(BaseModel):
@@ -80,14 +85,14 @@ class EmailUpdate(BaseModel):
 
 class RoleUpdate(BaseModel):
     role: Literal["admin", "user"] = Field(..., example="admin")
-    user_id: int = Field(..., example=42)
+    user_id: UUID = Field(..., example="f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
     model_config = {"from_attributes": True}
 
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Utility Schemas
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 
 
 class AvatarUpdate(BaseModel):
@@ -117,9 +122,9 @@ class UsernameAvailability(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Admin Utility Schemas
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 
 
 class UserAdminAction(str, Enum):
@@ -132,8 +137,8 @@ class UserAdminAction(str, Enum):
 
 class UserActionLog(BaseModel):
     id: int
-    admin_id: int
-    target_user_id: int
+    admin_id: UUID
+    target_user_id: UUID
     action: UserAdminAction
     timestamp: datetime
 

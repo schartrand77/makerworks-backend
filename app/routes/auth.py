@@ -1,102 +1,84 @@
-# app/routes/auth.py
+from datetime import timedelta
 
-import uuid
-
-from fastapi import APIRouter, Depends, HTTPException, Request
-from passlib.context import CryptContext
-from sqlalchemy import func, or_, select
+import httpx
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
-from app.dependencies.auth import get_current_user
-from app.models.models import User
-from app.schemas.auth import SigninRequest, SignupRequest, UserOut
-from app.services.token_service import create_access_token
-from app.utils.logging import logger
+from app.schemas.auth import TokenRequest, TokenResponse, UserOut
+from app.core.config import (
+    AUTHENTIK_TOKEN_URL,
+    AUTHENTIK_CLIENT_ID,
+    AUTHENTIK_CLIENT_SECRET,
+    AUTHENTIK_USERINFO_URL,
+    ALLOWED_REDIRECT_URIS,
+)
+from app.core.jwt import create_jwt_token
+from app.dependencies import get_db
 
+# 🔷 Define router
 router = APIRouter()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-logger.info("[Auth] Using password hashing scheme(s): %s", pwd_context.schemes())
 
-
-@router.post("/signup")
-async def signup(
-    payload: SignupRequest, request: Request, db: AsyncSession = Depends(get_db)
+@router.post("/token", response_model=TokenResponse)
+async def exchange_token(
+    payload: TokenRequest,
+    db: AsyncSession = Depends(get_db),
 ):
-    logger.debug("[SignUp] Received signup request for email: %s", payload.email)
+    """
+    Exchange Authentik OAuth2 code for MakerWorks JWT + user.
+    """
+    if not payload.code:
+        raise HTTPException(status_code=400, detail="Missing code")
 
-    result = await db.execute(
-        select(User).where(
-            or_(User.email == payload.email, User.username == payload.username)
+    if payload.redirect_uri not in ALLOWED_REDIRECT_URIS:
+        raise HTTPException(status_code=400, detail="Invalid redirect_uri")
+
+    # Step 1: exchange code for access token
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            AUTHENTIK_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": payload.code,
+                "redirect_uri": payload.redirect_uri,
+                "client_id": AUTHENTIK_CLIENT_ID,
+                "client_secret": AUTHENTIK_CLIENT_SECRET,
+            },
+            headers={"Accept": "application/json"},
+            timeout=10,
         )
-    )
-    existing_user = result.scalar_one_or_none()
-    if existing_user:
-        logger.warning("[SignUp] Duplicate email or username: %s", payload.email)
-        raise HTTPException(status_code=400, detail="Email or username already exists")
-
-    result = await db.execute(select(func.count()).select_from(User))
-    count = result.scalar_one()
-    role = "admin" if count == 0 else "user"
-
-    hashed_password = pwd_context.hash(payload.password)
-
-    user = User(
-        id=uuid.uuid4(),
-        email=payload.email,
-        username=payload.username,
-        hashed_password=hashed_password,
-        role=role,
-    )
-
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-
-    token = create_access_token(user_id=user.id, email=user.email)
-    logger.info("[SignUp] Success for: %s (role: %s)", user.email, user.role)
-
-    return {"user": UserOut(**user.to_dict()), "token": token}
-
-
-@router.post("/signin")
-async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
-    logger.debug("[SignIn] Attempt for: %s", payload.email_or_username)
-
-    result = await db.execute(
-        select(User).where(
-            or_(
-                User.email == payload.email_or_username,
-                User.username == payload.email_or_username,
+        token_resp.raise_for_status()
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise HTTPException(
+                status_code=400,
+                detail="No access token received from Authentik",
             )
+
+    # Step 2: fetch userinfo
+    async with httpx.AsyncClient() as client:
+        userinfo_resp = await client.get(
+            AUTHENTIK_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
         )
+        userinfo_resp.raise_for_status()
+        userinfo = userinfo_resp.json()
+
+    # Step 3: upsert user in MakerWorks DB
+    from app.crud import crud_user
+
+    user = await crud_user.upsert_user_from_authentik(db, userinfo)
+
+    # Step 4: generate MakerWorks JWT
+    jwt_token = create_jwt_token(
+        data={"user_id": str(user.id), "role": user.role},
+        expires_delta=timedelta(minutes=60),
     )
-    user = result.scalar_one_or_none()
 
-    if not user:
-        logger.warning("[SignIn] User not found: %s", payload.email_or_username)
-        raise HTTPException(status_code=401, detail="Authentication failed")
-
-    if not pwd_context.verify(payload.password, user.hashed_password):
-        logger.warning("[SignIn] Invalid password for: %s", payload.email_or_username)
-        raise HTTPException(status_code=401, detail="Authentication failed")
-
-    token = create_access_token(user_id=user.id, email=user.email)
-    logger.info("[SignIn] Success for: %s", user.username)
-
-    return {"user": UserOut(**user.to_dict()), "token": token}
-
-
-@router.get("/me")
-async def get_me(current_user: User = Depends(get_current_user)):
-    logger.debug("[Me] Authenticated as: %s", current_user.email)
-
-    return {"user": UserOut(**current_user.to_dict()), "token": None}
-
-
-@router.get("/debug")
-async def debug_me(current_user: User = Depends(get_current_user)):
-    logger.debug("[Debug] Testing serialization for user: %s", current_user.email)
-
-    return {"user": UserOut(**current_user.to_dict()), "token": "debug-token"}
+    return TokenResponse(
+        access_token=jwt_token,
+        token_type="bearer",
+        user=UserOut(**user.to_dict()),
+    )
