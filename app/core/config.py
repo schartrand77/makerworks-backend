@@ -118,6 +118,23 @@ class Settings(BaseSettings):
     # ────────────────
     metrics_api_key: str = Field(..., alias="METRICS_API_KEY")
 
+    # ────────────────
+    # OAuth2 Redirect URIs
+    # ────────────────
+    allowed_redirect_uris_raw: str = Field("", alias="ALLOWED_REDIRECT_URIS")
+    allowed_redirect_uris: list[str] = []
+
+    @model_validator(mode="after")
+    def parse_allowed_redirect_uris(cls, values):
+        raw = values.allowed_redirect_uris_raw
+        if raw:
+            values.allowed_redirect_uris = [
+                uri.strip() for uri in raw.split(",") if uri.strip()
+            ]
+        else:
+            values.allowed_redirect_uris = []
+        return values
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -125,5 +142,17 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+AUTHENTIK_TOKEN_URL = f"{settings.authentik_url.rstrip('/')}/application/o/token/"
+AUTHENTIK_USERINFO_URL = f"{settings.authentik_url.rstrip('/')}/application/o/userinfo/"
+AUTHENTIK_CLIENT_ID = settings.authentik_client_id
+AUTHENTIK_CLIENT_SECRET = settings.authentik_client_secret
+ALLOWED_REDIRECT_URIS = settings.allowed_redirect_uris
 
-__all__ = ["settings"]
+__all__ = [
+    "settings",
+    "AUTHENTIK_TOKEN_URL",
+    "AUTHENTIK_USERINFO_URL",
+    "AUTHENTIK_CLIENT_ID",
+    "AUTHENTIK_CLIENT_SECRET",
+    "ALLOWED_REDIRECT_URIS",
+]
