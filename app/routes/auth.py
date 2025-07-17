@@ -5,19 +5,19 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.auth import TokenRequest, TokenResponse, UserOut
-from app.core.config import (
-    AUTHENTIK_TOKEN_URL,
-    AUTHENTIK_CLIENT_ID,
-    AUTHENTIK_CLIENT_SECRET,
-    AUTHENTIK_USERINFO_URL,
-    ALLOWED_REDIRECT_URIS,
-)
+from app.config.settings import settings
 from app.core.jwt import create_jwt_token
 from app.dependencies import get_db
 
 # 🔷 Define router
 router = APIRouter()
 
+# Constants
+AUTHENTIK_TOKEN_URL = f"{settings.authentik_url}/application/o/token/"
+AUTHENTIK_USERINFO_URL = f"{settings.authentik_url}/application/o/userinfo/"
+ALLOWED_REDIRECT_URIS = [
+    f"{settings.domain}/auth/callback",
+]
 
 @router.post("/token", response_model=TokenResponse)
 async def exchange_token(
@@ -41,8 +41,8 @@ async def exchange_token(
                 "grant_type": "authorization_code",
                 "code": payload.code,
                 "redirect_uri": payload.redirect_uri,
-                "client_id": AUTHENTIK_CLIENT_ID,
-                "client_secret": AUTHENTIK_CLIENT_SECRET,
+                "client_id": settings.authentik_client_id,
+                "client_secret": settings.authentik_client_secret,
             },
             headers={"Accept": "application/json"},
             timeout=10,

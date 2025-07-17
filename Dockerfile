@@ -1,63 +1,34 @@
-# ─── Build Stage ─────────────────────────────────────────────
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
-  build-essential \
-  libpq-dev \
-  curl \
-  libjpeg-dev \
-  zlib1g-dev \
-  libmagic1 \
-  && rm -rf /var/lib/apt/lists/*
+    build-essential libpq-dev curl
 
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="/root/.local/bin:$PATH"
-
-# Copy dependency files first (better layer caching)
+# Install Python dependencies using Poetry
 COPY pyproject.toml poetry.lock ./
-
-# Configure Poetry and install only runtime dependencies
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="${PATH}:/root/.local/bin"
 RUN poetry config virtualenvs.create false \
-  && poetry install --only=main
+ && poetry install --no-interaction --no-ansi
 
-# ─── Runtime Stage ───────────────────────────────────────────
+# Runtime stage
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime libraries
-RUN apt-get update && apt-get install -y \
-  libpq-dev \
-  libjpeg-dev \
-  zlib1g-dev \
-  libmagic1 \
-  && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y libpq-dev
 
-# Set PYTHONPATH to /app so `from app.xxx` works
-ENV PYTHONPATH=/app
-
-# Copy Python + Poetry deps from build stage
+# Copy Python environment and app code
 COPY --from=builder /usr/local /usr/local
+COPY ./app /app/app
+COPY ./docker-entrypoint.sh /app/docker-entrypoint.sh
 
-# Copy application source code into /app directly
-COPY ./app /app
+# ✅ Copy the keys folder (fix for private.pem not found)
+COPY ./app/keys /app/keys
 
-# Ensure required runtime directories exist
-RUN mkdir -p /app/uploads /app/keys \
-  && chmod -R 700 /app/keys
+RUN chmod +x /app/docker-entrypoint.sh
 
-# Optional: uncomment if you want to include a private key
-# COPY app/keys/private.pem /app/keys/private.pem
-
-# Expose API port
-EXPOSE 8000
-
-# Optional: add container healthcheck
-HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8000/status || exit 1
-
-# Run Gunicorn with Uvicorn worker
-CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "app.main:app", "--bind", "0.0.0.0:8000"]
+CMD ["/app/docker-entrypoint.sh"]
