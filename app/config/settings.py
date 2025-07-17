@@ -27,8 +27,12 @@ class Settings(BaseSettings):
 
     # ─── JWT / Authentik ────────────────────────────────────
     jwt_algorithm: str = Field(default="RS256", alias="JWT_ALGORITHM")  # now RS256
-    private_key_path: str | None = Field(default=None, alias="PRIVATE_KEY_PATH")  # optional if JWKS
-    public_key_path: str | None = Field(default=None, alias="PUBLIC_KEY_PATH")    # optional if JWKS
+    private_key_path: str | None = Field(
+        default=None, alias="PRIVATE_KEY_PATH"
+    )  # optional if JWKS
+    public_key_path: str | None = Field(
+        default=None, alias="PUBLIC_KEY_PATH"
+    )  # optional if JWKS
     private_key_kid: str = Field(default="makerworks-key", alias="PRIVATE_KEY_KID")
     auth_audience: str = Field(default="makerworks", alias="AUTH_AUDIENCE")
 
@@ -55,6 +59,8 @@ class Settings(BaseSettings):
 
     # ─── Bambu ──────────────────────────────────────────────
     bambu_ip: AnyHttpUrl | None = Field(None, alias="BAMBU_IP")
+    bambu_allowed_hosts_raw: str = Field("", alias="BAMBU_ALLOWED_HOSTS")
+    bambu_allowed_hosts: list[str] = []
 
     # ─── Permanent Admin (email only for record keeping) ───
     permanent_admin_email: EmailStr | None = Field(None, alias="PERMANENT_ADMIN_EMAIL")
@@ -68,18 +74,38 @@ class Settings(BaseSettings):
             values.upload_dir = values.upload_dir or "/tmp"
             values.model_dir = values.model_dir or "/tmp"
             values.avatar_dir = values.avatar_dir or "/tmp"
-            values.async_database_url = values.async_database_url or "sqlite+aiosqlite:///:memory:"
+            values.async_database_url = (
+                values.async_database_url or "sqlite+aiosqlite:///:memory:"
+            )
             values.database_url = values.database_url or "sqlite:///:memory:"
             values.authentik_url = values.authentik_url or "http://auth.example.com"
-            values.authentik_issuer = values.authentik_issuer or "http://auth.example.com/issuer"
+            values.authentik_issuer = (
+                values.authentik_issuer or "http://auth.example.com/issuer"
+            )
             values.authentik_client_id = values.authentik_client_id or "dummy"
             values.authentik_client_secret = values.authentik_client_secret or "dummy"
             values.stripe_secret_key = values.stripe_secret_key or "sk_test_dummy"
             values.stripe_webhook_secret = values.stripe_webhook_secret or "whsec_dummy"
             values.discord_channel_id = values.discord_channel_id or "0"
             values.discord_bot_token = values.discord_bot_token or "dummy"
-            values.discord_webhook_url = values.discord_webhook_url or "http://example.com/webhook"
+            values.discord_webhook_url = (
+                values.discord_webhook_url or "http://example.com/webhook"
+            )
             values.metrics_api_key = values.metrics_api_key or "dummy"
+            values.bambu_allowed_hosts_raw = (
+                values.bambu_allowed_hosts_raw or "127.0.0.1"
+            )
+        return values
+
+    @model_validator(mode="after")
+    def _parse_bambu_allowed_hosts(cls, values: "Settings") -> "Settings":
+        raw_hosts = values.bambu_allowed_hosts_raw
+        if raw_hosts:
+            values.bambu_allowed_hosts = [
+                h.strip() for h in raw_hosts.split(",") if h.strip()
+            ]
+        else:
+            values.bambu_allowed_hosts = []
         return values
 
     @property

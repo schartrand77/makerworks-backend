@@ -1,10 +1,12 @@
 import logging
+from ipaddress import ip_address, ip_network
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.config.settings import settings
 from app.db.session import get_db
 from app.dependencies import get_current_user
 from app.schemas.user import UserOut
@@ -39,6 +41,24 @@ def _make_headers(token: str):
     }
 
 
+def _validate_ip(host: str) -> None:
+    """Ensure the provided host is in the allowed whitelist."""
+    if not settings.bambu_allowed_hosts:
+        return
+
+    for allowed in settings.bambu_allowed_hosts:
+        try:
+            if "/" in allowed:
+                if ip_address(host) in ip_network(allowed, strict=False):
+                    return
+            elif host == allowed:
+                return
+        except ValueError:
+            if host == allowed:
+                return
+    raise HTTPException(status_code=403, detail="IP address not allowed")
+
+
 @router.get("/status")
 async def x1c_status(
     ip: str,
@@ -48,6 +68,7 @@ async def x1c_status(
     """
     Get current printer status from X1C.
     """
+    _validate_ip(ip)
     url = f"http://{ip}/access/printer/status"
     try:
         async with httpx.AsyncClient() as client:
@@ -70,6 +91,7 @@ async def x1c_command(
     """
     Send a command to Bambu Lab X1C.
     """
+    _validate_ip(cmd.ip)
     base_url = f"http://{cmd.ip}/access"
 
     command_map = {
@@ -113,6 +135,7 @@ async def x1c_info(
     """
     Get basic printer info (model, firmware, serial, etc).
     """
+    _validate_ip(ip)
     url = f"http://{ip}/access/printer/info"
     try:
         async with httpx.AsyncClient() as client:
