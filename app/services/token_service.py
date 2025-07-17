@@ -130,3 +130,11 @@ async def verify_token_rs256(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid JWT: {e}",
         ) from e
+
+
+def decode_token(token: str) -> dict:
+    """Simplified helper used by tests to decode a JWT without validation."""
+    try:
+        return jwt.get_unverified_claims(token)
+    except Exception:
+        return {}
