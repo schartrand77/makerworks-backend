@@ -5,17 +5,12 @@ from datetime import datetime
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.db.database import get_db
 from app.models.models import AuditLog, User
-from app.services.redis_service import get_redis
-from app.services.token_blacklist import is_token_blacklisted
-from app.services.token_service import (
-    verify_token_rs256,
-)
+from app.services.token_service import decode_token
 
 logger = logging.getLogger(__name__)
 
@@ -36,16 +31,10 @@ credentials_exception = HTTPException(
 # ────────────────────────────────────────────────────────────────────────────────
 
 
-async def verify_token(token: str, redis: Redis) -> dict:
-    """
-    Verifies an RS256-signed JWT from Authentik and checks Redis blacklist.
-    """
+def verify_token(token: str) -> dict:
+    """Decode a JWT access token."""
     try:
-        payload = await verify_token_rs256(token)
-        jti = payload.get("jti")
-        if jti and await is_token_blacklisted(redis, jti):
-            raise HTTPException(status_code=401, detail="Token has been revoked")
-        return payload
+        return decode_token(token)
     except Exception as e:
         raise credentials_exception from e
 
@@ -60,12 +49,11 @@ decode_access_token = verify_token  # alias
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
 ) -> User:
     """
     Returns the local User record corresponding to the Authentik-authenticated user.
     """
-    payload = await verify_token(token, redis)
+    payload = verify_token(token)
     user_id: str | None = payload.get("sub")
 
     if not user_id:
@@ -101,3 +89,4 @@ async def log_action(admin_id: str, action: str, target_user_id: str, db: AsyncS
     )
     db.add(entry)
     await db.commit()
+
