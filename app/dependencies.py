@@ -10,43 +10,27 @@ from app.config.settings import settings
 from app.db.database import get_db
 from app.models.models import User
 from app.schemas.checkout import CheckoutRequest
-
-
-def parse_group_header(header_value: str | None) -> list[str]:
-    """
-    Parses a comma-separated header of groups into a list.
-    Example: "MakerWorks-Admin,MakerWorks-User" -> ["MakerWorks-Admin", "MakerWorks-User"]
-    """
-    if not header_value:
-        return []
-    return [g.strip() for g in header_value.split(",") if g.strip()]
+from app.services.token_service import decode_token
 
 
 async def get_current_user(
-    x_authentik_email: str = Header(..., alias="X-Authentik-Email"),
-    x_authentik_groups: str | None = Header(None, alias="X-Authentik-Groups"),
+    authorization: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """
-    Retrieve the current user from the database using Authentik-provided email header.
-    Also attach role from group membership.
-    """
-    result = await db.execute(select(User).where(User.email == x_authentik_email))
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+    token = authorization.split(" ")[1]
+    try:
+        payload = decode_token(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid token") from e
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-
-    groups = parse_group_header(x_authentik_groups)
-    if "MakerWorks-Admin" in groups:
-        user.role = "admin"
-    elif "MakerWorks-User" in groups:
-        user.role = "user"
-    else:
-        user.role = "guest"
-
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
 

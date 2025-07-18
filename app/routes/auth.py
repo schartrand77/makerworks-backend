@@ -1,84 +1,87 @@
-from datetime import timedelta
+from datetime import datetime
+from uuid import uuid4
 
-import httpx
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-from app.schemas.auth import TokenRequest, TokenResponse, UserOut
-from app.config.settings import settings
-from app.core.jwt import create_jwt_token
-from app.dependencies import get_db
+from app.db.session import get_db
+from app.models.models import User
+from app.schemas.auth import SignupRequest, SigninRequest, AuthPayload, UserOut
+from app.services.token_service import create_access_token, decode_token
+from app.utils.security import hash_password, verify_password
 
-# 🔷 Define router
 router = APIRouter()
 
-# Constants
-AUTHENTIK_TOKEN_URL = f"{settings.authentik_url}/application/o/token/"
-AUTHENTIK_USERINFO_URL = f"{settings.authentik_url}/application/o/userinfo/"
-ALLOWED_REDIRECT_URIS = [
-    f"{settings.domain}/auth/callback",
-]
 
-@router.post("/token", response_model=TokenResponse)
-async def exchange_token(
-    payload: TokenRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Exchange Authentik OAuth2 code for MakerWorks JWT + user.
-    """
-    if not payload.code:
-        raise HTTPException(status_code=400, detail="Missing code")
+async def _get_current_user(authorization: str = Header(...), db: AsyncSession = Depends(get_db)) -> User:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+    token = authorization.split(" ")[1]
+    try:
+        payload = decode_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
-    if payload.redirect_uri not in ALLOWED_REDIRECT_URIS:
-        raise HTTPException(status_code=400, detail="Invalid redirect_uri")
 
-    # Step 1: exchange code for access token
-    async with httpx.AsyncClient() as client:
-        token_resp = await client.post(
-            AUTHENTIK_TOKEN_URL,
-            data={
-                "grant_type": "authorization_code",
-                "code": payload.code,
-                "redirect_uri": payload.redirect_uri,
-                "client_id": settings.authentik_client_id,
-                "client_secret": settings.authentik_client_secret,
-            },
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
-        token_resp.raise_for_status()
-        token_data = token_resp.json()
-        access_token = token_data.get("access_token")
-        if not access_token:
-            raise HTTPException(
-                status_code=400,
-                detail="No access token received from Authentik",
-            )
-
-    # Step 2: fetch userinfo
-    async with httpx.AsyncClient() as client:
-        userinfo_resp = await client.get(
-            AUTHENTIK_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=10,
-        )
-        userinfo_resp.raise_for_status()
-        userinfo = userinfo_resp.json()
-
-    # Step 3: upsert user in MakerWorks DB
-    from app.crud import crud_user
-
-    user = await crud_user.upsert_user_from_authentik(db, userinfo)
-
-    # Step 4: generate MakerWorks JWT
-    jwt_token = create_jwt_token(
-        data={"user_id": str(user.id), "role": user.role},
-        expires_delta=timedelta(minutes=60),
+@router.post("/signup", response_model=AuthPayload)
+async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == payload.email))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    result = await db.execute(select(User).where(User.username == payload.username))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Username already taken")
+    user = User(
+        id=uuid4(),
+        email=payload.email,
+        username=payload.username,
+        hashed_password=hash_password(payload.password),
+        is_active=True,
+        is_verified=True,
+        created_at=datetime.utcnow(),
+        last_login=datetime.utcnow(),
     )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    token = create_access_token(user_id=str(user.id), email=user.email)
+    return AuthPayload(user=UserOut.model_validate(user), token=token)
 
-    return TokenResponse(
-        access_token=jwt_token,
-        token_type="bearer",
-        user=UserOut(**user.to_dict()),
-    )
+
+@router.post("/signin", response_model=AuthPayload)
+async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
+    stmt = select(User).where((User.email == payload.email_or_username) | (User.username == payload.email_or_username))
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+    user.last_login = datetime.utcnow()
+    await db.commit()
+    token = create_access_token(user_id=str(user.id), email=user.email)
+    return AuthPayload(user=UserOut.model_validate(user), token=token)
+
+
+@router.post("/signout")
+async def signout(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+    return {"status": "ok"}
+
+
+@router.get("/me", response_model=AuthPayload)
+async def me(user: User = Depends(_get_current_user)):
+    return AuthPayload(user=UserOut.model_validate(user))
+
+
+@router.get("/debug")
+async def debug_route():
+    return {"token": "debug-token"}

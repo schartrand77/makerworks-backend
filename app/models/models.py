@@ -171,3 +171,25 @@ class AuditLog(Base):
 
     def __repr__(self):
         return f"<AuditLog id={self.id} user_id={self.user_id} action={self.action}>"
+
+
+class FilamentPricing(Base):
+    __tablename__ = "filament_pricing"
+
+    id = Column(String, primary_key=True)
+    filament_id = Column(UUID(as_uuid=True), ForeignKey("filaments.id"), nullable=False)
+    price_per_gram = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    filament = relationship("Filament")
+
+
+class EstimateSettings(Base):
+    __tablename__ = "estimate_settings"
+
+    id = Column(String, primary_key=True)
+    custom_text_base_cost = Column(Float, default=2.0)
+    custom_text_cost_per_char = Column(Float, default=0.1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+

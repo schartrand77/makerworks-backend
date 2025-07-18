@@ -24,30 +24,31 @@ class Settings(BaseSettings):
     # ─── Redis / Celery ─────────────────────────────────────
     redis_url: str = Field("redis://localhost:6379", alias="REDIS_URL")
 
-    # ─── JWT / Authentik ────────────────────────────────────
-    jwt_algorithm: str = Field(default="RS256", alias="JWT_ALGORITHM")  # now RS256
+    # ─── JWT / Auth ─────────────────────────────────────────
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_secret: str = Field(default="secret", alias="JWT_SECRET")
     private_key_path: str | None = Field(default=None, alias="PRIVATE_KEY_PATH")  # optional if JWKS
     public_key_path: str | None = Field(default=None, alias="PUBLIC_KEY_PATH")    # optional if JWKS
     private_key_kid: str = Field(default="makerworks-key", alias="PRIVATE_KEY_KID")
     auth_audience: str = Field(default="makerworks", alias="AUTH_AUDIENCE")
 
     # ─── Authentik ──────────────────────────────────────────
-    authentik_url: str = Field(..., alias="AUTHENTIK_URL")
-    authentik_issuer: str = Field(..., alias="AUTHENTIK_ISSUER")
-    authentik_client_id: str = Field(..., alias="AUTHENTIK_CLIENT_ID")
-    authentik_client_secret: str = Field(..., alias="AUTHENTIK_CLIENT_SECRET")
+    authentik_url: str = Field("", alias="AUTHENTIK_URL")
+    authentik_issuer: str = Field("", alias="AUTHENTIK_ISSUER")
+    authentik_client_id: str = Field("", alias="AUTHENTIK_CLIENT_ID")
+    authentik_client_secret: str = Field("", alias="AUTHENTIK_CLIENT_SECRET")
 
     # ─── Stripe ─────────────────────────────────────────────
-    stripe_secret_key: str = Field(..., alias="STRIPE_SECRET_KEY")
-    stripe_webhook_secret: str = Field(..., alias="STRIPE_WEBHOOK_SECRET")
+    stripe_secret_key: str = Field("", alias="STRIPE_SECRET_KEY")
+    stripe_webhook_secret: str = Field("", alias="STRIPE_WEBHOOK_SECRET")
 
     # ─── Discord ────────────────────────────────────────────
-    discord_channel_id: str = Field(..., alias="DISCORD_CHANNEL_ID")
-    discord_bot_token: str = Field(..., alias="DISCORD_BOT_TOKEN")
-    discord_webhook_url: str = Field(..., alias="DISCORD_WEBHOOK_URL")
+    discord_channel_id: str = Field("", alias="DISCORD_CHANNEL_ID")
+    discord_bot_token: str = Field("", alias="DISCORD_BOT_TOKEN")
+    discord_webhook_url: str = Field("", alias="DISCORD_WEBHOOK_URL")
 
     # ─── Monitoring ─────────────────────────────────────────
-    metrics_api_key: str = Field(..., alias="METRICS_API_KEY")
+    metrics_api_key: str = Field("", alias="METRICS_API_KEY")
 
     # ─── CORS ───────────────────────────────────────────────
     raw_cors_origins: str | list[AnyHttpUrl] = Field(default="", alias="CORS_ORIGINS")
