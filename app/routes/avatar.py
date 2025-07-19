@@ -16,10 +16,11 @@ from app.dependencies.auth import get_user_from_headers
 from app.models import User
 from app.schemas.token import TokenData
 from app.schemas.user import AvatarUploadResponse
+from app.utils.users import create_user_dirs
 
 router = APIRouter()
 
-AVATAR_DIR: Path = Path(settings.avatar_dir)
+BASE_UPLOAD_DIR: Path = Path(settings.upload_dir)
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
 MAX_AVATAR_SIZE = (512, 512)
 THUMB_SIZE = (128, 128)
@@ -32,15 +33,10 @@ ALLOWED_IMAGE_MIME = {
 }
 
 
-def safe_mkdir(path: Path):
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logging.error(f"[AVATAR] Could not create avatar dir {path}: {e}")
-        raise HTTPException(500, f"Avatar storage error: {e}") from e
-
-
-safe_mkdir(AVATAR_DIR)
+def get_avatar_dir(user_id: str) -> Path:
+    path = BASE_UPLOAD_DIR / "users" / user_id / "avatars"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 @router.post("/avatar", response_model=AvatarUploadResponse)
@@ -69,8 +65,9 @@ async def upload_avatar(
     base_name = f"{user_id}_{avatar_uuid}"
     avatar_filename = f"{base_name}{ext}"
     thumb_filename = f"{base_name}_thumb{ext}"
-    save_path = AVATAR_DIR / avatar_filename
-    thumb_path = AVATAR_DIR / thumb_filename
+    avatar_dir = get_avatar_dir(user_id)
+    save_path = avatar_dir / avatar_filename
+    thumb_path = avatar_dir / thumb_filename
 
     try:
         image = Image.open(io.BytesIO(contents))
@@ -78,7 +75,7 @@ async def upload_avatar(
         image.thumbnail(MAX_AVATAR_SIZE)
 
         with tempfile.NamedTemporaryFile(
-            delete=False, suffix=ext, dir=AVATAR_DIR
+            delete=False, suffix=ext, dir=avatar_dir
         ) as tmp:
             image.save(tmp.name, optimize=True, quality=85)
             Path(tmp.name).replace(save_path)
@@ -86,7 +83,7 @@ async def upload_avatar(
         thumb = image.copy()
         thumb.thumbnail(THUMB_SIZE)
         with tempfile.NamedTemporaryFile(
-            delete=False, suffix=ext, dir=AVATAR_DIR
+            delete=False, suffix=ext, dir=avatar_dir
         ) as tmp_thumb:
             thumb.save(tmp_thumb.name, optimize=True, quality=85)
             Path(tmp_thumb.name).replace(thumb_path)
@@ -101,7 +98,7 @@ async def upload_avatar(
 
     if user.avatar_url:
         try:
-            old_file = AVATAR_DIR / Path(user.avatar_url).name
+            old_file = avatar_dir / Path(user.avatar_url).name
             old_thumb = old_file.with_name(f"{old_file.stem}_thumb{old_file.suffix}")
             for f in [old_file, old_thumb]:
                 if f.exists():
@@ -109,7 +106,7 @@ async def upload_avatar(
         except Exception as e:
             logging.warning(f"[AVATAR] Failed to delete old avatar: {e}")
 
-    user.avatar_url = f"/uploads/avatars/{avatar_filename}"
+    user.avatar_url = f"/uploads/users/{user_id}/avatars/{avatar_filename}"
     user.avatar_updated_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
@@ -119,7 +116,7 @@ async def upload_avatar(
     return AvatarUploadResponse(
         status="ok",
         avatar_url=f"{BASE_URL}{user.avatar_url}?t={ts}",
-        thumbnail_url=f"{BASE_URL}/uploads/avatars/{thumb_filename}?t={ts}",
+        thumbnail_url=f"{BASE_URL}/uploads/users/{user_id}/avatars/{thumb_filename}?t={ts}",
         uploaded_at=user.avatar_updated_at,
     )
 

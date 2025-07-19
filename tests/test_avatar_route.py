@@ -121,8 +121,9 @@ def test_upload_avatar_success(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["avatar_url"].startswith("http://testserver/uploads/avatars/")
-    assert data["thumbnail_url"].startswith("http://testserver/uploads/avatars/")
+    prefix = f"http://testserver/uploads/users/{user_id}/avatars/"
+    assert data["avatar_url"].startswith(prefix)
+    assert data["thumbnail_url"].startswith(prefix)
     assert data["uploaded_at"]
 
 

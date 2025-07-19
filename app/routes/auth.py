@@ -10,6 +10,7 @@ from app.models.models import User
 from app.schemas.auth import SignupRequest, SigninRequest, AuthPayload, UserOut
 from app.services.token_service import create_access_token, decode_token
 from app.utils.security import hash_password, verify_password
+from app.utils.users import create_user_dirs
 
 router = APIRouter()
 
@@ -91,6 +92,7 @@ async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    create_user_dirs(str(user.id))
 
     token = create_access_token(user_id=str(user.id), email=user.email)
     return AuthPayload(user=UserOut.model_validate(user, from_attributes=True), token=token)
