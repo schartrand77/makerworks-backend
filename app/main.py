@@ -44,6 +44,9 @@ async def lifespan(app: FastAPI):
     for key, value in snapshot.items():
         logger.info(gray(f"   {key}: {value}"))
 
+    # Print route table on startup
+    print_route_table()
+
     yield
 
     # On shutdown (optional cleanup here)
@@ -115,5 +118,3 @@ def print_route_table():
             path = route.path
             print(f"{green(methods):<10} {cyan(path)}")
 
-
-print_route_table()
