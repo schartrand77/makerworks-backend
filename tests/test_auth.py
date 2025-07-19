@@ -1,6 +1,7 @@
 import os
 import sys
 import uuid
+from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -45,6 +46,10 @@ async def test_signup(client: AsyncClient, db: AsyncSession):
     # Validate user exists in DB
     user_in_db = await db.get(User, uuid.UUID(data["user"]["id"]))
     assert user_in_db is not None
+
+    base = Path(os.environ.get("UPLOAD_DIR", "/tmp")) / "users" / data["user"]["id"]
+    assert (base / "avatars").exists()
+    assert (base / "models").exists()
 
 
 @pytest.mark.asyncio

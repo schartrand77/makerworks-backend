@@ -12,6 +12,7 @@ from app.dependencies.auth import get_user_from_headers
 from app.models import ModelMetadata as Model3D
 from app.schemas.models import ModelUploadResponse
 from app.schemas.token import TokenData
+from app.utils.users import create_user_dirs
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ router = APIRouter()
 # Config
 # ─────────────────────────────────────────────────────────────
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
-MODEL_DIR: Path = Path(settings.model_dir)  # ← FIXED here
+BASE_UPLOAD_DIR: Path = Path(settings.upload_dir)
 
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -34,15 +35,10 @@ ALLOWED_MODEL_TYPES = {
 # ─────────────────────────────────────────────────────────────
 # Ensure upload directories exist
 # ─────────────────────────────────────────────────────────────
-def safe_mkdir(path: Path):
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logging.error(f"[ERROR] Could not create directory {path}: {e}")
-        raise HTTPException(500, f"Upload directory error: {e}") from e
-
-
-safe_mkdir(MODEL_DIR)
+def get_model_dir(user_id: str) -> Path:
+    path = BASE_UPLOAD_DIR / "users" / user_id / "models"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 # ─────────────────────────────────────────────────────────────
@@ -92,7 +88,8 @@ async def upload_model(
         raise HTTPException(400, "Unsupported 3D model file type")
 
     model_id = str(uuid4())
-    save_path = MODEL_DIR / f"{model_id}{ext}"
+    model_dir = get_model_dir(user_id)
+    save_path = model_dir / f"{model_id}{ext}"
     logging.info(f"[MODEL] Saving model for user {user_id} to: {save_path}")
 
     save_file(save_path, contents)
@@ -115,6 +112,6 @@ async def upload_model(
     return ModelUploadResponse(
         id=model.id,
         name=model.name,
-        url=f"{BASE_URL}/uploads/stls/{model_id}{ext}",
+        url=f"{BASE_URL}/uploads/users/{user_id}/models/{model_id}{ext}",
         uploaded_at=now_iso,
     )
