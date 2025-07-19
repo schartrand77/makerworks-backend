@@ -74,17 +74,17 @@ async def get_current_user(
 # ────────────────────────────────────────────────────────────────────────────────
 
 
-async def log_action(admin_id: str, action: str, target_user_id: str, db: AsyncSession):
+async def log_action(admin_id: str, action: str, target: str, db: AsyncSession):
     logger.info(
         "[log_action] Admin %s performed '%s' on user %s",
         admin_id,
         action,
-        target_user_id,
+        target,
     )
     entry = AuditLog(
         user_id=admin_id,
         action=action,
-        target=target_user_id,
+        target=target,
         created_at=datetime.utcnow(),
     )
     db.add(entry)
