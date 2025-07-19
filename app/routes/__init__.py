@@ -13,7 +13,6 @@ from .auth import router as auth_router
 from .bambu_connect import router as bambu_router
 from .cart import router as cart_router
 from .checkout import router as checkout_router
-from .discord import router as discord_router
 from .favorites import router as favorites_router
 from .filaments import router as filaments_router
 from .models import router as models_router
@@ -30,7 +29,6 @@ router.include_router(auth_router, prefix="/auth", tags=["auth"])
 router.include_router(bambu_router, prefix="/bambu", tags=["bambu"])
 router.include_router(cart_router, prefix="/cart", tags=["cart"])
 router.include_router(checkout_router, prefix="/checkout", tags=["checkout"])
-router.include_router(discord_router, prefix="/discord", tags=["discord"])
 router.include_router(favorites_router, prefix="/favorites", tags=["favorites"])
 router.include_router(filaments_router, prefix="/filaments", tags=["filaments"])
 router.include_router(models_router, prefix="/models", tags=["models"])

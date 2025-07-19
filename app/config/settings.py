@@ -1,8 +1,10 @@
 # app/config/settings.py
 
 from functools import lru_cache
-from pydantic import AnyHttpUrl, EmailStr, Field
-from pydantic_settings import BaseSettings
+from pydantic import AnyHttpUrl, EmailStr, Field, ValidationError, validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
+import sys
 
 
 class Settings(BaseSettings):
@@ -27,8 +29,8 @@ class Settings(BaseSettings):
     # ─── JWT / Auth ─────────────────────────────────────────
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_secret: str = Field(default="secret", alias="JWT_SECRET")
-    private_key_path: str | None = Field(default=None, alias="PRIVATE_KEY_PATH")  # optional if JWKS
-    public_key_path: str | None = Field(default=None, alias="PUBLIC_KEY_PATH")    # optional if JWKS
+    private_key_path: str | None = Field(default=None, alias="PRIVATE_KEY_PATH")
+    public_key_path: str | None = Field(default=None, alias="PUBLIC_KEY_PATH")
     private_key_kid: str = Field(default="makerworks-key", alias="PRIVATE_KEY_KID")
     auth_audience: str = Field(default="makerworks", alias="AUTH_AUDIENCE")
 
@@ -53,10 +55,8 @@ class Settings(BaseSettings):
     # ─── CORS ───────────────────────────────────────────────
     raw_cors_origins: str | list[AnyHttpUrl] = Field(default="", alias="CORS_ORIGINS")
 
-    # ─── Bambu ──────────────────────────────────────────────
+    # ─── Optional ───────────────────────────────────────────
     bambu_ip: AnyHttpUrl | None = Field(None, alias="BAMBU_IP")
-
-    # ─── Permanent Admin (email only for record keeping) ───
     permanent_admin_email: EmailStr | None = Field(None, alias="PERMANENT_ADMIN_EMAIL")
 
     @property
@@ -69,16 +69,54 @@ class Settings(BaseSettings):
             ]
         return list(self.raw_cors_origins)
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "extra": "forbid",  # Disallow undeclared environment variables
-    }
+    @validator("bambu_ip", pre=True)
+    def validate_bambu_ip(cls, v):
+        if not v:
+            return None
+        return v
+
+    @validator("permanent_admin_email", pre=True)
+    def validate_permanent_admin_email(cls, v):
+        if not v:
+            return None
+        return v
+
+    # Load env file dynamically
+    model_config = SettingsConfigDict(
+        env_file=os.getenv("ENV_FILE", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore" if os.getenv("ENV", "development") == "development" else "forbid",
+    )
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    env_file = os.getenv("ENV_FILE", ".env")
+
+    try:
+        settings = Settings()
+    except ValidationError as e:
+        print(f"❌ Configuration validation error:\n{e}")
+        sys.exit(1)
+
+    print(f"✅ Loaded settings from `{env_file}` with ENV='{settings.env}'")
+
+    # validate critical keys
+    missing_keys = []
+    if not settings.stripe_secret_key:
+        missing_keys.append("STRIPE_SECRET_KEY")
+    if not settings.upload_dir:
+        missing_keys.append("UPLOAD_DIR")
+    if not settings.model_dir:
+        missing_keys.append("MODEL_DIR")
+    if not settings.avatar_dir:
+        missing_keys.append("AVATAR_DIR")
+
+    if missing_keys:
+        print(f"❌ Missing required settings: {', '.join(missing_keys)}. Please check your `.env` or `.env.dev`.")
+        sys.exit(1)
+
+    return settings
 
 
 settings = get_settings()

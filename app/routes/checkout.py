@@ -1,7 +1,6 @@
 # app/routes/checkout.py
 
 import logging
-import os
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,9 +8,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.dependencies.auth import get_user_from_headers
+from app.dependencies.auth import get_current_user
 from app.models import Estimate, User
 from app.tasks.render import generate_gcode
+from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,11 @@ router = APIRouter(prefix="/checkout", tags=["Checkout"])
 # ─────────────────────────────────────────────────────────────
 # Stripe Setup
 # ─────────────────────────────────────────────────────────────
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-DOMAIN = os.getenv("DOMAIN", "http://localhost:5173")
-WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+settings = get_settings()
+
+stripe.api_key = settings.stripe_secret_key
+DOMAIN = settings.domain
+WEBHOOK_SECRET = settings.stripe_webhook_secret
 
 if not stripe.api_key:
     raise RuntimeError("❌ Missing STRIPE_SECRET_KEY")
@@ -43,8 +45,11 @@ class CheckoutRequest(BaseModel):
 @router.post("/session", summary="Create a Stripe Checkout session")
 def create_checkout_session(
     data: CheckoutRequest,
-    user: User = Depends(get_user_from_headers),
+    user: User = Depends(get_current_user),
 ):
+    """
+    Creates a Stripe Checkout session for the specified model & estimate.
+    """
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -83,6 +88,9 @@ def create_checkout_session(
 # ─────────────────────────────────────────────────────────────
 @router.post("/webhook", summary="Stripe webhook endpoint")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Handles Stripe webhook events to mark payments complete & trigger G-code task.
+    """
     payload = await request.body()
     sig = request.headers.get("stripe-signature")
 

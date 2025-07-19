@@ -3,9 +3,6 @@
 """
 SQLAlchemy models for MakerWorks backend.
 Includes: User, Estimate, Favorite, Filament, ModelMetadata, AuditLog.
-
-Notes:
-- `User.authentik_sub` is the stable external identifier from Authentik (`sub` claim in ID token).
 """
 
 import uuid
@@ -35,12 +32,11 @@ class User(Base):
     __table_args__ = (
         UniqueConstraint("email", name="uq_user_email"),
         UniqueConstraint("username", name="uq_user_username"),
-        UniqueConstraint("authentik_sub", name="uq_user_authentik_sub"),  # renamed + enforced
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False, index=True)
 
-    authentik_sub = Column(String, unique=True, nullable=True, index=True)  # external stable ID from Authentik
+    # removed authentik_sub
     email = Column(String, nullable=False, unique=True)
     username = Column(String, nullable=False, unique=True)
     hashed_password = Column(String(128), nullable=True)  # optional if only using SSO
@@ -80,7 +76,7 @@ class User(Base):
 
     def __repr__(self):
         return (
-            f"<User id={self.id} username={self.username} authentik_sub={self.authentik_sub} role={self.role}>"
+            f"<User id={self.id} username={self.username} role={self.role}>"
         )
 
 
@@ -191,5 +187,3 @@ class EstimateSettings(Base):
     custom_text_base_cost = Column(Float, default=2.0)
     custom_text_cost_per_char = Column(Float, default=0.1)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-

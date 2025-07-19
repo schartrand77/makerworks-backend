@@ -14,7 +14,13 @@ from app.utils.security import hash_password, verify_password
 router = APIRouter()
 
 
-async def _get_current_user(authorization: str = Header(...), db: AsyncSession = Depends(get_db)) -> User:
+async def _get_current_user(
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """
+    Internal helper to extract current user from Authorization header.
+    """
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid Authorization header")
     token = authorization.split(" ")[1]
@@ -34,12 +40,17 @@ async def _get_current_user(authorization: str = Header(...), db: AsyncSession =
 
 @router.post("/signup", response_model=AuthPayload)
 async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Create a new user account.
+    """
     result = await db.execute(select(User).where(User.email == payload.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
+
     result = await db.execute(select(User).where(User.username == payload.username))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username already taken")
+
     user = User(
         id=uuid4(),
         email=payload.email,
@@ -53,25 +64,42 @@ async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
     token = create_access_token(user_id=str(user.id), email=user.email)
-    return AuthPayload(user=UserOut.model_validate(user), token=token)
+    return AuthPayload(user=UserOut.model_validate(user, from_attributes=True), token=token)
 
 
 @router.post("/signin", response_model=AuthPayload)
 async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
-    stmt = select(User).where((User.email == payload.email_or_username) | (User.username == payload.email_or_username))
+    """
+    Authenticate an existing user.
+    """
+    stmt = select(User).where(
+        (User.email == payload.email_or_username)
+        | (User.username == payload.email_or_username)
+    )
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
-    if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
+
+    if (
+        not user
+        or not user.hashed_password
+        or not verify_password(payload.password, user.hashed_password)
+    ):
         raise HTTPException(status_code=400, detail="Invalid credentials")
+
     user.last_login = datetime.utcnow()
     await db.commit()
+
     token = create_access_token(user_id=str(user.id), email=user.email)
-    return AuthPayload(user=UserOut.model_validate(user), token=token)
+    return AuthPayload(user=UserOut.model_validate(user, from_attributes=True), token=token)
 
 
 @router.post("/signout")
 async def signout(authorization: str = Header(...)):
+    """
+    Sign out user (currently no-op, but client should discard token).
+    """
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid Authorization header")
     return {"status": "ok"}
@@ -79,9 +107,15 @@ async def signout(authorization: str = Header(...)):
 
 @router.get("/me", response_model=AuthPayload)
 async def me(user: User = Depends(_get_current_user)):
+    """
+    Get current authenticated user.
+    """
     return AuthPayload(user=UserOut.model_validate(user))
 
 
 @router.get("/debug")
 async def debug_route():
+    """
+    Debug route for development.
+    """
     return {"token": "debug-token"}
