@@ -82,10 +82,10 @@ async def log_action(admin_id: str, action: str, target_user_id: str, db: AsyncS
         target_user_id,
     )
     entry = AuditLog(
-        admin_id=admin_id,
+        user_id=admin_id,
         action=action,
-        target_user_id=target_user_id,
-        timestamp=datetime.utcnow(),
+        target=target_user_id,
+        created_at=datetime.utcnow(),
     )
     db.add(entry)
     await db.commit()
