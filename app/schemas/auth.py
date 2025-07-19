@@ -1,6 +1,8 @@
 from pydantic import BaseModel, EmailStr
 from uuid import UUID
 from datetime import datetime
+from typing import Optional
+
 
 class SignupRequest(BaseModel):
     email: EmailStr
@@ -17,8 +19,9 @@ class UserOut(BaseModel):
     id: UUID
     email: EmailStr
     username: str
+    role: Optional[str] = None               # 🩹 Added role
     created_at: datetime
-    last_login: datetime | None = None
+    last_login: Optional[datetime] = None
     is_verified: bool
 
     class Config:
@@ -27,4 +30,4 @@ class UserOut(BaseModel):
 
 class AuthPayload(BaseModel):
     user: UserOut
-    token: str
+    token: Optional[str] = None

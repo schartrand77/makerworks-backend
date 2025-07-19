@@ -14,28 +14,55 @@ from app.utils.security import hash_password, verify_password
 router = APIRouter()
 
 
-async def _get_current_user(
-    authorization: str = Header(...),
+def get_guest_user() -> UserOut:
+    """
+    Return a fully populated guest user.
+    """
+    now = datetime.utcnow()
+    return UserOut(
+        id="00000000-0000-0000-0000-000000000000",
+        username="guest",
+        email="guest@example.com",
+        name="Guest User",
+        bio="Guest user - limited access.",
+        role="guest",
+        is_verified=False,
+        created_at=now,
+        last_login=None,
+        avatar_url="/static/images/guest-avatar.png",
+        thumbnail_url="/static/images/guest-thumbnail.png",
+        avatar_updated_at=now,
+        language="en",
+    )
+
+
+async def get_current_user(
+    authorization: str = Header(default=None),
     db: AsyncSession = Depends(get_db),
-) -> User:
+) -> UserOut:
     """
-    Internal helper to extract current user from Authorization header.
+    Tries to fetch the current authenticated user.
+    If token is missing/invalid → returns guest user.
     """
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+    if not authorization or not authorization.startswith("Bearer "):
+        return get_guest_user()
+
     token = authorization.split(" ")[1]
     try:
         payload = decode_token(token)
     except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        return get_guest_user()
+
     user_id = payload.get("sub")
     if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
+        return get_guest_user()
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+        return get_guest_user()
+
+    return UserOut.model_validate(user, from_attributes=True)
 
 
 @router.post("/signup", response_model=AuthPayload)
@@ -96,21 +123,23 @@ async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/signout")
-async def signout(authorization: str = Header(...)):
+async def signout(authorization: str = Header(default=None)):
     """
     Sign out user (currently no-op, but client should discard token).
     """
-    if not authorization.startswith("Bearer "):
+    if authorization and not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid Authorization header")
     return {"status": "ok"}
 
 
 @router.get("/me", response_model=AuthPayload)
-async def me(user: User = Depends(_get_current_user)):
+async def me(user: UserOut = Depends(get_current_user)):
     """
-    Get current authenticated user.
+    Get current authenticated user or guest if not authenticated.
     """
-    return AuthPayload(user=UserOut.model_validate(user))
+    # Return an empty string token for guest
+    token = "" if user.role == "guest" else None
+    return AuthPayload(user=user, token=token)
 
 
 @router.get("/debug")

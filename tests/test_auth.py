@@ -1,5 +1,6 @@
 import os
 import sys
+import uuid
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -18,11 +19,11 @@ os.environ.setdefault("STRIPE_SECRET_KEY", "test")
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.main import app
 from app.db.session import get_db
 from app.models.models import User
-from app.services.token_service import decode_token
-import uuid
+
 
 @pytest.mark.asyncio
 async def test_signup(client: AsyncClient, db: AsyncSession):
