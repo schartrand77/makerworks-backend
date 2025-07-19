@@ -18,6 +18,7 @@ source venv/bin/activate
 pip install -r requirements.txt  # installs dependencies such as aiosqlite and authlib
 cp .env.example .env
 # edit .env and update the connection strings and secrets as needed
+# `.env.example` lists all required environment variables
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
