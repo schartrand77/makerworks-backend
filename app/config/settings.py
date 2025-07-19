@@ -103,8 +103,6 @@ def get_settings() -> Settings:
 
     # validate critical keys
     missing_keys = []
-    if not settings.stripe_secret_key:
-        missing_keys.append("STRIPE_SECRET_KEY")
     if not settings.upload_dir:
         missing_keys.append("UPLOAD_DIR")
     if not settings.model_dir:

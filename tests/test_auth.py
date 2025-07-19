@@ -1,3 +1,20 @@
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+os.environ.setdefault("ENV", "test")
+os.environ.setdefault("DOMAIN", "http://testserver")
+os.environ.setdefault("BASE_URL", "http://testserver")
+os.environ.setdefault("VITE_API_BASE_URL", "http://testserver")
+os.environ.setdefault("UPLOAD_DIR", "/tmp")
+os.environ.setdefault("MODEL_DIR", "/tmp")
+os.environ.setdefault("AVATAR_DIR", "/tmp")
+os.environ.setdefault("ASYNC_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("JWT_SECRET", "secret")
+os.environ.setdefault("STRIPE_SECRET_KEY", "test")
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
