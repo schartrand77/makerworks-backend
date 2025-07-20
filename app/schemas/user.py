@@ -44,9 +44,9 @@ class UpdateUserProfile(BaseModel):
     Fields are optional and validated.
     """
 
-    name: str | None
-    bio: str | None
-    language: str | None  # NEW: allow updating language
+    name: str | None = None
+    bio: str | None = None
+    language: str | None = None  # NEW: allow updating language
     avatar_url: HttpUrl | None = None  # Optional frontend-provided override
 
     model_config = {"extra": "forbid"}

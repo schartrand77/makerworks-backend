@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.db.database import get_db
@@ -89,7 +89,7 @@ async def upload_model(
     name: str = Form(None),
     description: str = Form(""),
     token: TokenData = Depends(get_user_from_headers),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     user_id = token.sub
 
@@ -137,8 +137,8 @@ async def upload_model(
     )
 
     db.add(model)
-    db.commit()
-    db.refresh(model)
+    await db.commit()
+    await db.refresh(model)
 
     return ModelUploadResponse(
         id=model.id,

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.database import get_db
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, get_user_from_headers
 from app.models.models import User
 from app.schemas.user import (
     UpdateUserProfile,
@@ -23,7 +23,7 @@ router = APIRouter(tags=["users"])
 @router.patch("/me", response_model=UserOut, summary="Update user profile (bio, etc.)")
 async def update_profile(
     payload: UpdateUserProfile,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """
