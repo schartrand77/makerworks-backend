@@ -122,6 +122,7 @@ class Filament(Base):
     price_per_kg = Column(Float, nullable=False)
     surface_texture = Column(String, nullable=True)
     is_biodegradable = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)  # 🔷 added this line
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):
