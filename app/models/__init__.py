@@ -1,25 +1,28 @@
 # app/models/__init__.py
 
-from app.models.base import Base
 from app.models.models import (
+    Base,
+    User,
     Estimate,
-    # EstimateSettings,  # commented out if not yet defined
+    EstimateSettings,
     Favorite,
     Filament,
     ModelMetadata,
-    User,
+    AuditLog,
+    FilamentPricing,
 )
 
-# Optional alias for compatibility
 Model3D = ModelMetadata
 
 __all__ = [
     "Base",
+    "User",
     "Estimate",
-    # "EstimateSettings",  # include here if/when implemented
+    "EstimateSettings",
     "Favorite",
     "Filament",
-    "Model3D",
     "ModelMetadata",
-    "User",
+    "Model3D",
+    "AuditLog",
+    "FilamentPricing",
 ]

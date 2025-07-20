@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     jwt_secret: str = "changeme"
     jwt_algorithm: str = "HS256"
 
+    # ─── Blender path ───────────────────────────────
+    blender_path: str = os.getenv("BLENDER_PATH", "/opt/homebrew/bin/blender")
+
     class Config:
         env_file = ENV_FILE
         extra = "ignore"
@@ -55,6 +58,7 @@ try:
     settings = Settings()
     logger.info(f"✅ Loaded settings with CORS origins: {settings.cors_origins}")
     logger.info(f"✅ Loaded async_database_url: {settings.async_database_url}")
+    logger.info(f"✅ Using Blender binary: {settings.blender_path}")
 
     # ─── Sanity checks ───────────────────────────────
     if not settings.async_database_url:

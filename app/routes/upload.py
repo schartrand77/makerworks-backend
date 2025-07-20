@@ -11,11 +11,11 @@ from sqlalchemy.orm import Session
 from app.config.settings import settings
 from app.db.database import get_db
 from app.dependencies.auth import get_user_from_headers
-from app.models import ModelMetadata as Model3D
+from app.models import ModelMetadata as Model3D, User
 from app.schemas.models import ModelUploadResponse
-from app.schemas.token import TokenData
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
 # Config
@@ -32,6 +32,7 @@ ALLOWED_MODEL_TYPES = {
     "application/3mf",
 }
 
+BLENDER_PATH: str = getattr(settings, "blender_path", "/opt/homebrew/bin/blender")
 
 # ─────────────────────────────────────────────────────────────
 # Ensure upload directories exist
@@ -50,7 +51,7 @@ def save_file(destination: Path, data: bytes):
         with open(destination, "wb") as buffer:
             buffer.write(data)
     except Exception as e:
-        logging.error(f"[ERROR] Saving file failed: {e}")
+        logger.exception(f"[ERROR] Saving file failed: {e}")
         raise HTTPException(500, "Failed to save file") from e
 
 
@@ -63,21 +64,68 @@ def extract_model_metadata(filepath: Path) -> dict:
     """
     Run Blender script to extract metadata from the uploaded model.
     """
+    log_path = filepath.with_suffix(".log")
+
+    cmd = [
+        BLENDER_PATH,
+        "--background",
+        "--python", "scripts/extract_model_metadata.py",
+        "--", str(filepath)
+    ]
+
+    logger.info(f"🛠 Running Blender for metadata extraction: {' '.join(cmd)}")
+
     try:
         result = subprocess.run(
-            [
-                "blender", "--background", "--python", "scripts/extract_model_metadata.py",
-                "--", str(filepath)
-            ],
-            capture_output=True, text=True, check=True
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
-        return json.loads(result.stdout)
-    except subprocess.CalledProcessError as e:
-        logging.error(f"[MODEL] Blender metadata extraction failed: {e.stderr}")
-        raise HTTPException(500, "Failed to extract model metadata")
-    except json.JSONDecodeError:
-        logging.error("[MODEL] Invalid JSON returned by Blender.")
-        raise HTTPException(500, "Invalid metadata format from Blender")
+    except FileNotFoundError as e:
+        logger.error("❌ Blender executable not found.")
+        raise HTTPException(500, "Blender executable not found on server") from e
+
+    if result.returncode != 0:
+        logger.error(f"❌ Blender exited with code {result.returncode}")
+        logger.error(f"stdout:\n{result.stdout}")
+        logger.error(f"stderr:\n{result.stderr}")
+        _append_log(log_path, result.stdout, result.stderr)
+
+        raise HTTPException(
+            status_code=422,
+            detail=f"Blender failed (code {result.returncode}). See log: {log_path}"
+        )
+
+    try:
+        metadata = json.loads(result.stdout)
+        logger.info(f"✅ Metadata extracted: {metadata}")
+        return metadata
+    except json.JSONDecodeError as e:
+        logger.error("❌ Invalid JSON returned by Blender.")
+        logger.error(f"stdout:\n{result.stdout}")
+        logger.error(f"stderr:\n{result.stderr}")
+        _append_log(log_path, result.stdout, result.stderr)
+
+        raise HTTPException(
+            status_code=422,
+            detail=f"Blender returned invalid JSON. See log: {log_path}"
+        )
+
+
+def _append_log(log_path: Path, stdout: str, stderr: str):
+    """
+    Append stdout and stderr to a log file for debugging.
+    """
+    try:
+        with open(log_path, "a") as logf:
+            logf.write("\n===== Blender stdout =====\n")
+            logf.write(stdout)
+            logf.write("\n===== Blender stderr =====\n")
+            logf.write(stderr)
+        logger.info(f"📄 Blender output appended to log: {log_path}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to write Blender log file: {e}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -88,10 +136,10 @@ async def upload_model(
     file: UploadFile = File(...),
     name: str = Form(None),
     description: str = Form(""),
-    token: TokenData = Depends(get_user_from_headers),
+    user: User = Depends(get_user_from_headers),
     db: Session = Depends(get_db),
 ):
-    user_id = token.sub
+    user_id = str(user.id)
 
     if not file.filename:
         raise HTTPException(400, "No filename provided.")
@@ -106,14 +154,13 @@ async def upload_model(
     now = datetime.utcnow()
     now_iso = now.isoformat()
 
-    # ─────────────── Upload Model ───────────────
     if file.content_type not in ALLOWED_MODEL_TYPES:
         raise HTTPException(400, "Unsupported 3D model file type")
 
     model_id = str(uuid4())
     model_dir = get_model_dir(user_id)
     save_path = model_dir / f"{model_id}{ext}"
-    logging.info(f"[MODEL] Saving model for user {user_id} to: {save_path}")
+    logger.info(f"[MODEL] Saving model for user {user_id} to: {save_path}")
 
     save_file(save_path, contents)
 
@@ -129,9 +176,9 @@ async def upload_model(
         uploader_id=user_id,
         uploaded_at=now,
         geometry_hash=metadata.get("geometry_hash"),
-        is_duplicate=False,  # You can implement duplicate detection if desired
+        is_duplicate=False,
         volume=metadata.get("volume"),
-        bbox=json.dumps(metadata.get("bbox")),  # store as JSON string
+        bbox=json.dumps(metadata.get("bbox")),
         faces=metadata.get("faces"),
         vertices=metadata.get("vertices"),
     )
@@ -139,6 +186,8 @@ async def upload_model(
     db.add(model)
     db.commit()
     db.refresh(model)
+
+    logger.info(f"✅ Model {model.id} uploaded & metadata saved for user {user_id}")
 
     return ModelUploadResponse(
         id=model.id,
