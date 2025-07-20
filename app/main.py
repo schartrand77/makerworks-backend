@@ -2,10 +2,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from app.utils.boot_messages import random_boot_message
 from app.utils.system_info import get_system_status_snapshot
 from app.config.settings import settings
+
 import logging
+from contextlib import asynccontextmanager
+from fastapi.routing import APIRoute
 
 logger = logging.getLogger("uvicorn")
 
@@ -28,9 +33,6 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 # ─── Lifespan tasks ─────────────────────────
-from contextlib import asynccontextmanager
-from fastapi.routing import APIRoute
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     snapshot = get_system_status_snapshot()
@@ -79,6 +81,7 @@ from app.routes import (
     system,
     upload,
     users,
+    models,
 )
 
 mount(auth.router, "/api/v1/auth", ["auth"])
@@ -90,6 +93,25 @@ mount(filaments.router, "/api/v1/filaments", ["filaments"])
 mount(admin.router, "/api/v1/admin", ["admin"])
 mount(cart.router, "/api/v1/cart", ["cart"])
 mount(checkout.router, "/api/v1/checkout", ["checkout"])
+mount(models.router, "/api/v1/models", ["models"])
+
+
+# ─── Mount Static Files ─────────────────────
+# Serve uploads properly using the @property
+app.mount(
+    "/uploads",
+    StaticFiles(directory=settings.uploads_path),
+    name="uploads"
+)
+logger.info(f"📁 Uploads directory served from {settings.uploads_path} at /uploads")
+
+
+# Optional: if you have another static dir elsewhere, you can still serve it:
+# app.mount(
+#     "/static",
+#     StaticFiles(directory=settings.static_path),
+#     name="static"
+# )
 
 
 # ─── Route Table Printer ────────────────────

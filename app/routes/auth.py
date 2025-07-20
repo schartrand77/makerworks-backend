@@ -134,14 +134,13 @@ async def signout(authorization: str = Header(default=None)):
     return {"status": "ok"}
 
 
-@router.get("/me", response_model=AuthPayload)
+@router.get("/me", response_model=UserOut)
 async def me(user: UserOut = Depends(get_current_user)):
     """
     Get current authenticated user or guest if not authenticated.
+    Returns a plain UserOut object for frontend.
     """
-    # Return an empty string token for guest
-    token = "" if user.role == "guest" else None
-    return AuthPayload(user=user, token=token)
+    return user
 
 
 @router.get("/debug")

@@ -17,8 +17,9 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     UniqueConstraint,
+    Integer,  # ✅ added to fix NameError
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, validates, DeclarativeBase
 
 
@@ -36,10 +37,9 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False, index=True)
 
-    # removed authentik_sub
     email = Column(String, nullable=False, unique=True)
     username = Column(String, nullable=False, unique=True)
-    hashed_password = Column(String(128), nullable=True)  # optional if only using SSO
+    hashed_password = Column(String(128), nullable=True)
 
     avatar = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
@@ -54,14 +54,13 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime)
 
-    # relationships
     models = relationship("ModelMetadata", back_populates="user", cascade="all, delete-orphan")
     favorites = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
     estimates = relationship("Estimate", back_populates="user", cascade="all, delete-orphan")
 
     def __init__(self, **kwargs):
-        kwargs.pop("password", None)  # ignore plain password
+        kwargs.pop("password", None)
         super().__init__(**kwargs)
 
     @validates("hashed_password")
@@ -116,12 +115,12 @@ class Filament(Base):
     __tablename__ = "filaments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False, index=True)
-    category = Column(String, nullable=False)             # e.g., PLA, PETG
-    type = Column(String, nullable=False)                 # e.g., Matte, Silk
-    color_name = Column(String, nullable=False)           # e.g., Scarlet Red
-    color_hex = Column(String(7), nullable=False)         # e.g., #FF0000
+    category = Column(String, nullable=False)
+    type = Column(String, nullable=False)
+    color_name = Column(String, nullable=False)
+    color_hex = Column(String(7), nullable=False)
     price_per_kg = Column(Float, nullable=False)
-    surface_texture = Column(String, nullable=True)       # e.g., Glossy, Matte
+    surface_texture = Column(String, nullable=True)
     is_biodegradable = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -145,6 +144,12 @@ class ModelMetadata(Base):
     is_duplicate = Column(Boolean, default=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
+    # 🆕 metadata from Blender
+    volume = Column(Float, nullable=True)
+    bbox = Column(JSONB, nullable=True)
+    faces = Column(Integer, nullable=True)
+    vertices = Column(Integer, nullable=True)
+
     user = relationship("User", back_populates="models")
     favorites = relationship("Favorite", back_populates="model", cascade="all, delete-orphan")
 
@@ -158,8 +163,8 @@ class AuditLog(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
-    action = Column(String, nullable=False)              # e.g., CREATE, UPDATE, DELETE
-    target = Column(String, nullable=True)              # e.g., model_id or other reference
+    action = Column(String, nullable=False)
+    target = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

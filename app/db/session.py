@@ -1,57 +1,40 @@
-from collections.abc import AsyncGenerator
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from app.config.settings import settings
+
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Lazy-loaded engine and session_maker
-engine = None
-async_session_maker = None
+# ─── Database Engine ────────────────────────────────
+DATABASE_URL = settings.async_database_url
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=settings.env == "development",
+    future=True,
+)
+
+# ─── Session Factory ────────────────────────────────
+AsyncSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+logger.info(f"✅ Async SQLAlchemy engine initialized: {DATABASE_URL}")
 
 
-def init_engine():
+# ─── Dependency for FastAPI ─────────────────────────
+async def get_db() -> AsyncSession:
     """
-    Initializes the async SQLAlchemy engine & sessionmaker.
-    Called lazily on first DB access.
+    Yield an async database session to the request.
     """
-    global engine, async_session_maker
-
-    from app.config.settings import settings  # avoid circular import
-
-    db_url = settings.async_database_url
-
-    if not db_url.startswith("postgresql+asyncpg://"):
-        raise ValueError(
-            f"Invalid ASYNC_DATABASE_URL: {db_url} — must start with postgresql+asyncpg://"
-        )
-
-    logger.info(f"✅ Using ASYNC_DATABASE_URL: {db_url}")
-
-    engine = create_async_engine(
-        db_url,
-        echo=False,
-        future=True,
-        pool_pre_ping=True,
-    )
-
-    async_session_maker = async_sessionmaker(
-        bind=engine,
-        expire_on_commit=False,
-    )
-
-
-async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Yields an AsyncSession. Lazily initializes the engine if needed.
-    """
-    global async_session_maker
-
-    if async_session_maker is None:
-        init_engine()
-
-    async with async_session_maker() as session:
+    async with AsyncSessionLocal() as session:
         yield session
 
 
-# ✅ Legacy alias for backward compatibility
-get_db = get_async_db
+# Alias for backwards compatibility
+get_async_db = get_db

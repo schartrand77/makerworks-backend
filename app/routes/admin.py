@@ -1,11 +1,10 @@
 # app/routes/admin.py
 
 import os
-
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy import select
 
 from app.db.database import get_db
 from app.dependencies.auth import admin_required
@@ -45,6 +44,9 @@ async def get_user_groups(user_id: str) -> list[str]:
 
 @router.get("/users")
 async def get_all_users(admin=Depends(admin_required)):
+    """
+    List all users from Authentik with their groups.
+    """
     async with httpx.AsyncClient() as client:
         try:
             res = await client.get(
@@ -75,6 +77,9 @@ async def get_all_users(admin=Depends(admin_required)):
 async def promote_user(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
+    """
+    Log a promotion event (actual promotion happens in Authentik).
+    """
     await log_action(admin.sub, "promote_user", int(user_id), db)
     return {
         "status": "noop",
@@ -86,6 +91,9 @@ async def promote_user(
 async def demote_user(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
+    """
+    Log a demotion event (actual demotion happens in Authentik).
+    """
     await log_action(admin.sub, "demote_user", int(user_id), db)
     return {
         "status": "noop",
@@ -97,6 +105,9 @@ async def demote_user(
 async def delete_user(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
+    """
+    Log a deletion event (actual deletion happens in Authentik).
+    """
     await log_action(admin.sub, "delete_user", int(user_id), db)
     return {
         "status": "noop",
@@ -108,6 +119,9 @@ async def delete_user(
 async def force_password_reset(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
+    """
+    Log a password reset event (actual reset happens in Authentik).
+    """
     await log_action(admin.sub, "force_password_reset", int(user_id), db)
     return {
         "status": "noop",
@@ -119,6 +133,9 @@ async def force_password_reset(
 async def view_user_uploads(
     user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
 ):
+    """
+    View all uploads belonging to a specific user.
+    """
     result = await db.execute(
         select(ModelMetadata).where(ModelMetadata.user_id == user_id)
     )
@@ -127,6 +144,9 @@ async def view_user_uploads(
 
 @router.get("/discord/config")
 async def get_discord_config(admin=Depends(admin_required)):
+    """
+    Get the current Discord webhook/channel config.
+    """
     return discord_config
 
 
@@ -136,6 +156,9 @@ async def update_discord_config(
     admin=Depends(admin_required),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Update the Discord webhook/channel config.
+    """
     data = await request.json()
     discord_config.update(
         {
@@ -151,7 +174,9 @@ async def update_discord_config(
 # 👑 Hidden God Mode unlock endpoint
 @router.post("/unlock")
 async def god_mode_unlock(request: Request, admin=Depends(admin_required)):
-    """Hidden route for Konami Code God Mode."""
+    """
+    Hidden route for Konami Code God Mode.
+    """
     client_ip = request.client.host
     logger.warning(f"👑 God Mode unlock triggered from {client_ip}")
     return {"status": "ok", "message": f"God Mode unlocked from {client_ip}"}

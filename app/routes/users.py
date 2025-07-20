@@ -1,6 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.db.database import get_db
 from app.dependencies.auth import get_current_user
@@ -18,7 +19,6 @@ router = APIRouter(tags=["users"])
 # ─────────────────────────────────────────────────────────────
 # PATCH /users/me
 # ─────────────────────────────────────────────────────────────
-
 
 @router.patch("/me", response_model=UserOut, summary="Update user profile (bio, etc.)")
 async def update_profile(
@@ -39,7 +39,6 @@ async def update_profile(
 # GET /users/me
 # ─────────────────────────────────────────────────────────────
 
-
 @router.get(
     "/me",
     response_model=UserOut,
@@ -56,7 +55,6 @@ async def get_me(current_user: User = Depends(get_current_user)):
 # GET /users/username/check
 # ─────────────────────────────────────────────────────────────
 
-
 @router.get(
     "/username/check",
     summary="Check if username is available",
@@ -66,7 +64,7 @@ async def check_username(username: str, db: AsyncSession = Depends(get_db)):
     Check if a username is already taken.
     """
     result = await db.execute(
-        db.query(User).filter(User.username == username)
+        select(User).where(User.username == username)
     )
     user = result.scalar_one_or_none()
     return {
@@ -78,7 +76,6 @@ async def check_username(username: str, db: AsyncSession = Depends(get_db)):
 # ─────────────────────────────────────────────────────────────
 # GET /users (admin-only)
 # ─────────────────────────────────────────────────────────────
-
 
 @router.get(
     "/",
@@ -94,7 +91,7 @@ async def get_all_users(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    result = await db.execute(db.query(User))
+    result = await db.execute(select(User))
     users = result.scalars().all()
 
     return [UserOut.model_validate(u) for u in users]

@@ -1,4 +1,6 @@
 import logging
+import subprocess
+import json
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -12,7 +14,6 @@ from app.dependencies.auth import get_user_from_headers
 from app.models import ModelMetadata as Model3D
 from app.schemas.models import ModelUploadResponse
 from app.schemas.token import TokenData
-from app.utils.users import create_user_dirs
 
 router = APIRouter()
 
@@ -58,6 +59,27 @@ def validate_file_size(data: bytes, max_size: int):
         raise HTTPException(400, f"File too large (max {max_size // (1024*1024)} MB)")
 
 
+def extract_model_metadata(filepath: Path) -> dict:
+    """
+    Run Blender script to extract metadata from the uploaded model.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "blender", "--background", "--python", "scripts/extract_model_metadata.py",
+                "--", str(filepath)
+            ],
+            capture_output=True, text=True, check=True
+        )
+        return json.loads(result.stdout)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"[MODEL] Blender metadata extraction failed: {e.stderr}")
+        raise HTTPException(500, "Failed to extract model metadata")
+    except json.JSONDecodeError:
+        logging.error("[MODEL] Invalid JSON returned by Blender.")
+        raise HTTPException(500, "Invalid metadata format from Blender")
+
+
 # ─────────────────────────────────────────────────────────────
 # POST /api/v1/upload
 # ─────────────────────────────────────────────────────────────
@@ -81,7 +103,8 @@ async def upload_model(
     contents = await file.read()
     validate_file_size(contents, MAX_FILE_SIZE_BYTES)
 
-    now_iso = datetime.utcnow().isoformat()
+    now = datetime.utcnow()
+    now_iso = now.isoformat()
 
     # ─────────────── Upload Model ───────────────
     if file.content_type not in ALLOWED_MODEL_TYPES:
@@ -94,17 +117,25 @@ async def upload_model(
 
     save_file(save_path, contents)
 
+    # ─────────────── Extract Metadata ───────────────
+    metadata = extract_model_metadata(save_path)
+
     model = Model3D(
         id=model_id,
         name=name or file.filename,
         description=description,
         filename=file.filename,
-        filepath=str(save_path),
+        filepath=str(save_path.relative_to(BASE_UPLOAD_DIR)),
         uploader_id=user_id,
-        uploaded_at=datetime.utcnow(),
-        geometry_hash=None,
-        is_duplicate=False,
+        uploaded_at=now,
+        geometry_hash=metadata.get("geometry_hash"),
+        is_duplicate=False,  # You can implement duplicate detection if desired
+        volume=metadata.get("volume"),
+        bbox=json.dumps(metadata.get("bbox")),  # store as JSON string
+        faces=metadata.get("faces"),
+        vertices=metadata.get("vertices"),
     )
+
     db.add(model)
     db.commit()
     db.refresh(model)
