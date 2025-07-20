@@ -5,7 +5,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pathlib import Path
-from uuid import uuid4
 from datetime import datetime
 import io
 import tempfile
@@ -38,35 +37,7 @@ def get_avatar_dir(user_id: str) -> Path:
     return base
 
 
-def has_gpu() -> bool:
-    """
-    Check if the system has a GPU that Blender can use.
-    """
-    try:
-        result = subprocess.run(
-            [
-                "blender", "--background", "--factory-startup", "--python-expr",
-                "import bpy; "
-                "prefs=bpy.context.preferences.addons['cycles'].preferences; "
-                "prefs.compute_device_type='CUDA'; "
-                "devices=prefs.devices; "
-                "print(any(d.use for d in devices))"
-            ],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode != 0:
-            logger.warning(f"[AVATAR] GPU check failed: {result.stderr}")
-            return False
-        return "True" in result.stdout
-    except Exception as e:
-        logger.warning(f"[AVATAR] GPU check exception: {e}")
-        return False
-
-
 def render_with_blender(input_path: Path, output_path: Path, thumb_path: Path, use_gpu: bool):
-    """
-    Run Blender script to process avatar with optional GPU acceleration.
-    """
     env = os.environ.copy()
     env["USE_GPU"] = "1" if use_gpu else "0"
     cmd = [
@@ -108,60 +79,64 @@ async def upload_avatar(
         )
 
     ext = ALLOWED_IMAGE_MIME[content_type]
-    avatar_uuid = uuid4().hex
-    base_name = f"{user_id}_{avatar_uuid}"
-    avatar_filename = f"{base_name}{ext}"
-    thumb_filename = f"{base_name}_thumb{ext}"
+    avatar_filename = f"avatar{ext}"
+    thumb_filename = f"avatar_thumb{ext}"
     avatar_dir = get_avatar_dir(user_id)
     save_path = avatar_dir / avatar_filename
     thumb_path = avatar_dir / thumb_filename
 
-    tmp_input = avatar_dir / f"{base_name}_input{ext}"
+    # Clean up old files
+    for f in avatar_dir.glob("avatar*"):
+        try:
+            f.unlink()
+            logger.info(f"[AVATAR] Deleted old avatar file: {f}")
+        except Exception as e:
+            logger.warning(f"[AVATAR] Failed to delete old avatar: {e}")
+
+    tmp_input = avatar_dir / f"input{ext}"
     tmp_input.write_bytes(contents)
 
     try:
-        gpu_available = has_gpu()
-        render_with_blender(tmp_input, save_path, thumb_path, gpu_available)
+        use_gpu = False
+        try:
+            result = subprocess.run(
+                [
+                    "blender", "--background", "--factory-startup", "--python-expr",
+                    "import bpy; prefs=bpy.context.preferences.addons['cycles'].preferences;"
+                    "prefs.compute_device_type='CUDA'; devices=prefs.devices;"
+                    "print(any(d.use for d in devices))"
+                ],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0 and "True" in result.stdout:
+                use_gpu = True
+        except Exception as e:
+            logger.warning(f"[AVATAR] GPU check failed: {e}")
+
+        render_with_blender(tmp_input, save_path, thumb_path, use_gpu)
         tmp_input.unlink(missing_ok=True)
     except Exception as e:
         logger.error(f"[AVATAR] Blender failed, falling back to Pillow: {e}")
         from PIL import Image
 
         try:
-            image = Image.open(io.BytesIO(contents))
-            image = image.convert("RGB")
+            image = Image.open(io.BytesIO(contents)).convert("RGB")
             image.thumbnail(MAX_AVATAR_SIZE)
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext, dir=avatar_dir) as tmp:
-                image.save(tmp.name, optimize=True, quality=85)
-                Path(tmp.name).replace(save_path)
+            image.save(save_path, optimize=True, quality=85)
 
             thumb = image.copy()
             thumb.thumbnail(THUMB_SIZE)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext, dir=avatar_dir) as tmp_thumb:
-                thumb.save(tmp_thumb.name, optimize=True, quality=85)
-                Path(tmp_thumb.name).replace(thumb_path)
-
+            thumb.save(thumb_path, optimize=True, quality=85)
         except Exception as e:
-            logger.error(f"[AVATAR] Failed to process image for user {user_id}: {e}")
+            logger.error(f"[AVATAR] Failed to process image: {e}")
             raise HTTPException(500, detail="Failed to process avatar image") from e
 
+    # Update user record
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         logger.error(f"[AVATAR] User {user_id} not found in DB after upload")
         raise HTTPException(404, "User not found")
-
-    if user.avatar_url:
-        try:
-            old_file = avatar_dir / Path(user.avatar_url).name
-            old_thumb = old_file.with_name(f"{old_file.stem}_thumb{old_file.suffix}")
-            for f in [old_file, old_thumb]:
-                if f.exists():
-                    f.unlink()
-                    logger.info(f"[AVATAR] Deleted old avatar file: {f}")
-        except Exception as e:
-            logger.warning(f"[AVATAR] Failed to delete old avatar: {e}")
 
     user.avatar_url = f"/uploads/users/{user_id}/avatars/{avatar_filename}"
     user.avatar_updated_at = datetime.utcnow()
