@@ -17,9 +17,6 @@ from app.schemas.models import ModelUploadResponse
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────
-# Config
-# ─────────────────────────────────────────────────────────────
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
 BASE_UPLOAD_DIR: Path = Path(settings.upload_dir)
 
@@ -32,19 +29,13 @@ ALLOWED_MODEL_TYPES = {
     "application/3mf",
 }
 
-BLENDER_PATH: str = getattr(settings, "blender_path", "/opt/homebrew/bin/blender")
 
-# ─────────────────────────────────────────────────────────────
-# Ensure upload directories exist
-# ─────────────────────────────────────────────────────────────
 def get_model_dir(user_id: str) -> Path:
     path = BASE_UPLOAD_DIR / "users" / user_id / "models"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-# ─────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────
+
 def save_file(destination: Path, data: bytes):
     try:
         with open(destination, "wb") as buffer:
@@ -59,19 +50,25 @@ def validate_file_size(data: bytes, max_size: int):
         raise HTTPException(400, f"File too large (max {max_size // (1024*1024)} MB)")
 
 
-def run_blender_script(script_name: str, args: list, log_path: Path) -> str:
+def extract_model_metadata(filepath: Path) -> dict:
     """
-    Run a blender script and return stdout.
+    Run the metadata extractor script.
     """
+    log_path = filepath.with_suffix(".log")
+
+    script_path = Path(__file__).parent.parent / "scripts" / "extract_model_metadata.py"
+    if not script_path.exists():
+        logger.error(f"❌ Metadata extractor script not found at {script_path}")
+        raise HTTPException(500, f"Metadata extractor script missing: {script_path}")
+
     cmd = [
-        BLENDER_PATH,
-        "--background",
-        "--python", str(Path(__file__).parent / f"blender/{script_name}"),
+        "python3",
+        str(script_path.resolve()),
         "--",
-        *args
+        str(filepath.resolve())
     ]
 
-    logger.info(f"🛠 Running Blender: {' '.join(cmd)}")
+    logger.info(f"🛠 Running metadata extractor: {' '.join(cmd)}")
     try:
         result = subprocess.run(
             cmd,
@@ -80,72 +77,84 @@ def run_blender_script(script_name: str, args: list, log_path: Path) -> str:
             check=False,
         )
     except FileNotFoundError as e:
-        logger.error("❌ Blender executable not found.")
-        raise HTTPException(500, "Blender executable not found on server") from e
+        logger.error("❌ Python executable not found.")
+        raise HTTPException(500, "Python not found") from e
 
     if result.returncode != 0:
-        logger.error(f"❌ Blender exited with code {result.returncode}")
+        logger.error(f"❌ Metadata extractor exited with code {result.returncode}")
         logger.error(f"stdout:\n{result.stdout}")
         logger.error(f"stderr:\n{result.stderr}")
         _append_log(log_path, result.stdout, result.stderr)
 
         raise HTTPException(
             status_code=422,
-            detail=f"Blender failed (code {result.returncode}). See log: {log_path}"
+            detail=f"Metadata extractor failed (code {result.returncode}). See log: {log_path}"
         )
 
-    return result.stdout
-
-
-def extract_model_metadata_and_previews(filepath: Path) -> tuple[dict, Path | None]:
-    """
-    Run Blender scripts to extract metadata, render .png and .webm previews.
-    """
-    log_path = filepath.with_suffix(".log")
-    metadata = {}
-
-    # Run metadata extraction & .png render
-    stdout = run_blender_script("extract_model_metadata.py", [str(filepath)], log_path)
     try:
-        metadata = json.loads(stdout)
+        metadata = json.loads(result.stdout)
         logger.info(f"✅ Metadata extracted: {metadata}")
+        return metadata
     except json.JSONDecodeError:
-        logger.error("❌ Invalid JSON returned by Blender metadata script.")
-        _append_log(log_path, stdout, "")
-        raise HTTPException(422, f"Blender returned invalid JSON. See log: {log_path}")
+        logger.error("❌ Invalid JSON returned by metadata extractor.")
+        _append_log(log_path, result.stdout, result.stderr)
+        raise HTTPException(422, f"Metadata extractor returned invalid JSON. See log: {log_path}")
 
-    # Run .webm turntable render
-    webm_output = filepath.with_suffix(".webm")
-    webm_exists = False
+
+def render_webm(filepath: Path) -> Path:
+    """
+    Run the turntable renderer to generate a .webm preview.
+    """
+    webm_path = filepath.with_suffix(".webm")
+    script_path = Path(__file__).parent.parent / "utils" / "render_turntable_webm.py"
+    if not script_path.exists():
+        logger.error(f"❌ Turntable renderer script not found at {script_path}")
+        raise HTTPException(500, f"Turntable renderer script missing: {script_path}")
+
+    cmd = [
+        "python3",
+        str(script_path.resolve()),
+        "--",
+        str(filepath.resolve()),
+    ]
+
+    logger.info(f"🎥 Rendering .webm preview: {' '.join(cmd)}")
     try:
-        run_blender_script("render_turntable_webm.py", [str(filepath), str(webm_output)], log_path)
-        logger.info(f"✅ .webm turntable generated at {webm_output}")
-        webm_exists = True
-    except HTTPException:
-        logger.warning("⚠️ Failed to generate .webm preview but continuing.")
-        webm_output = None
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as e:
+        logger.error("❌ Python executable not found for webm renderer.")
+        raise HTTPException(500, "Python not found") from e
 
-    return metadata, webm_output if webm_exists else None
+    if result.returncode != 0:
+        logger.error(f"❌ Webm renderer exited with code {result.returncode}")
+        logger.error(f"stdout:\n{result.stdout}")
+        logger.error(f"stderr:\n{result.stderr}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Webm renderer failed (code {result.returncode})."
+        )
+
+    logger.info(f"✅ .webm created at {webm_path}")
+    return webm_path.relative_to(BASE_UPLOAD_DIR)
 
 
 def _append_log(log_path: Path, stdout: str, stderr: str):
-    """
-    Append stdout and stderr to a log file for debugging.
-    """
     try:
         with open(log_path, "a") as logf:
-            logf.write("\n===== Blender stdout =====\n")
+            logf.write("\n===== stdout =====\n")
             logf.write(stdout)
-            logf.write("\n===== Blender stderr =====\n")
+            logf.write("\n===== stderr =====\n")
             logf.write(stderr)
-        logger.info(f"📄 Blender output appended to log: {log_path}")
+        logger.info(f"📄 Output appended to log: {log_path}")
     except Exception as e:
-        logger.warning(f"⚠️ Failed to write Blender log file: {e}")
+        logger.warning(f"⚠️ Failed to write log file: {e}")
 
 
-# ─────────────────────────────────────────────────────────────
-# POST /api/v1/upload
-# ─────────────────────────────────────────────────────────────
 @router.post("/", response_model=ModelUploadResponse)
 async def upload_model(
     file: UploadFile = File(...),
@@ -179,40 +188,51 @@ async def upload_model(
 
     save_file(save_path, contents)
 
-    # ─────────────── Extract Metadata & Previews ───────────────
-    metadata, webm_output = extract_model_metadata_and_previews(save_path)
+    # ─────────────── Extract Metadata ───────────────
+    metadata = extract_model_metadata(save_path)
 
-    model = Model3D(
-        id=model_id,
-        name=name or file.filename,
-        description=description,
-        filename=file.filename,
-        filepath=str(save_path.relative_to(BASE_UPLOAD_DIR)),
-        uploader_id=user_id,
-        uploaded_at=now,
-        geometry_hash=metadata.get("geometry_hash"),
-        is_duplicate=False,
-        volume=metadata.get("volume"),
-        bbox=json.dumps(metadata.get("bbox")),
-        faces=metadata.get("faces"),
-        vertices=metadata.get("vertices"),
-    )
+    # ─────────────── Render .webm ───────────────
+    webm_rel_path = render_webm(save_path)
+
+    model_kwargs = {
+        "id": model_id,
+        "name": name or file.filename,
+        "description": description,
+        "filename": file.filename,
+        "filepath": str(save_path.relative_to(BASE_UPLOAD_DIR)),
+        "uploader_id": user_id,
+        "uploaded_at": now,
+        "geometry_hash": metadata.get("geometry_hash"),
+        "is_duplicate": False,
+        "volume": None,
+        "bbox": None,
+        "faces": 0,
+        "vertices": 0,
+    }
+
+    if ext == ".3mf":
+        model_kwargs["description"] += "\n3MF Metadata:\n" + json.dumps(metadata, indent=2)
+        logger.info(f"📋 Saved 3MF metadata: {metadata}")
+    else:
+        model_kwargs.update({
+            "volume": metadata.get("volume"),
+            "bbox": json.dumps(metadata.get("bbox", [])),
+            "faces": metadata.get("faces", 0),
+            "vertices": metadata.get("vertices", 0),
+        })
+
+    model = Model3D(**model_kwargs)
 
     db.add(model)
     db.commit()
     db.refresh(model)
 
-    logger.info(f"✅ Model {model.id} uploaded & metadata saved for user {user_id}")
-
-    webm_url = None
-    if webm_output and webm_output.exists():
-        webm_rel_path = webm_output.relative_to(BASE_UPLOAD_DIR)
-        webm_url = f"{BASE_URL}/{webm_rel_path}"
+    logger.info(f"✅ Model {model.id} uploaded & metadata + webm saved for user {user_id}")
 
     return ModelUploadResponse(
         id=model.id,
         name=model.name,
         url=f"{BASE_URL}/uploads/users/{user_id}/models/{model_id}{ext}",
         uploaded_at=now_iso,
-        webm_url=webm_url,
+        webm_url=f"{BASE_URL}/uploads/{webm_rel_path}",
     )
