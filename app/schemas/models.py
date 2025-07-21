@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, HttpUrl
 
@@ -9,28 +9,33 @@ class ModelOut(BaseModel):
     name: str
     uploader: str
     uploaded_at: datetime
-    preview_image: HttpUrl | None = None
-    dimensions: dict[str, float] | None = None
-    volume_cm3: float | None = None
+    preview_image: Optional[HttpUrl] = None
+    webm_url: Optional[HttpUrl] = None   # ← Added for turntable preview
+    dimensions: Optional[dict[str, float]] = None
+    volume_cm3: Optional[float] = None
     tags: list[str] = []
-    face_count: int | None = None
-    role: Literal["user", "admin"] | None = "user"
-    description: str | None = None
-    category: str | None = "uncategorized"
+    face_count: Optional[int] = None
+    role: Optional[Literal["user", "admin"]] = "user"
+    description: Optional[str] = None
+    category: Optional[str] = "uncategorized"
+
     model_config = {"from_attributes": True}
 
 
 class ModelUploadRequest(BaseModel):
     name: str
-    description: str | None = None
+    description: Optional[str] = None
     tags: list[str] = []
-    category: str | None = "uncategorized"
+    category: Optional[str] = "uncategorized"
+
     model_config = {"from_attributes": True}
 
 
 class ModelUploadResponse(BaseModel):
     id: int
     name: str
-    preview_image: HttpUrl | None = None
+    preview_image: Optional[HttpUrl] = None
+    webm_url: Optional[HttpUrl] = None   # ← Added here as well
     uploaded_at: datetime
+
     model_config = {"from_attributes": True}

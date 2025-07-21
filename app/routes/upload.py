@@ -42,7 +42,6 @@ def get_model_dir(user_id: str) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-
 # ─────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────
@@ -60,21 +59,19 @@ def validate_file_size(data: bytes, max_size: int):
         raise HTTPException(400, f"File too large (max {max_size // (1024*1024)} MB)")
 
 
-def extract_model_metadata(filepath: Path) -> dict:
+def run_blender_script(script_name: str, args: list, log_path: Path) -> str:
     """
-    Run Blender script to extract metadata from the uploaded model.
+    Run a blender script and return stdout.
     """
-    log_path = filepath.with_suffix(".log")
-
     cmd = [
         BLENDER_PATH,
         "--background",
-        "--python", "scripts/extract_model_metadata.py",
-        "--", str(filepath)
+        "--python", str(Path(__file__).parent / f"blender/{script_name}"),
+        "--",
+        *args
     ]
 
-    logger.info(f"🛠 Running Blender for metadata extraction: {' '.join(cmd)}")
-
+    logger.info(f"🛠 Running Blender: {' '.join(cmd)}")
     try:
         result = subprocess.run(
             cmd,
@@ -97,20 +94,38 @@ def extract_model_metadata(filepath: Path) -> dict:
             detail=f"Blender failed (code {result.returncode}). See log: {log_path}"
         )
 
-    try:
-        metadata = json.loads(result.stdout)
-        logger.info(f"✅ Metadata extracted: {metadata}")
-        return metadata
-    except json.JSONDecodeError as e:
-        logger.error("❌ Invalid JSON returned by Blender.")
-        logger.error(f"stdout:\n{result.stdout}")
-        logger.error(f"stderr:\n{result.stderr}")
-        _append_log(log_path, result.stdout, result.stderr)
+    return result.stdout
 
-        raise HTTPException(
-            status_code=422,
-            detail=f"Blender returned invalid JSON. See log: {log_path}"
-        )
+
+def extract_model_metadata_and_previews(filepath: Path) -> tuple[dict, Path | None]:
+    """
+    Run Blender scripts to extract metadata, render .png and .webm previews.
+    """
+    log_path = filepath.with_suffix(".log")
+    metadata = {}
+
+    # Run metadata extraction & .png render
+    stdout = run_blender_script("extract_model_metadata.py", [str(filepath)], log_path)
+    try:
+        metadata = json.loads(stdout)
+        logger.info(f"✅ Metadata extracted: {metadata}")
+    except json.JSONDecodeError:
+        logger.error("❌ Invalid JSON returned by Blender metadata script.")
+        _append_log(log_path, stdout, "")
+        raise HTTPException(422, f"Blender returned invalid JSON. See log: {log_path}")
+
+    # Run .webm turntable render
+    webm_output = filepath.with_suffix(".webm")
+    webm_exists = False
+    try:
+        run_blender_script("render_turntable_webm.py", [str(filepath), str(webm_output)], log_path)
+        logger.info(f"✅ .webm turntable generated at {webm_output}")
+        webm_exists = True
+    except HTTPException:
+        logger.warning("⚠️ Failed to generate .webm preview but continuing.")
+        webm_output = None
+
+    return metadata, webm_output if webm_exists else None
 
 
 def _append_log(log_path: Path, stdout: str, stderr: str):
@@ -164,8 +179,8 @@ async def upload_model(
 
     save_file(save_path, contents)
 
-    # ─────────────── Extract Metadata ───────────────
-    metadata = extract_model_metadata(save_path)
+    # ─────────────── Extract Metadata & Previews ───────────────
+    metadata, webm_output = extract_model_metadata_and_previews(save_path)
 
     model = Model3D(
         id=model_id,
@@ -189,9 +204,15 @@ async def upload_model(
 
     logger.info(f"✅ Model {model.id} uploaded & metadata saved for user {user_id}")
 
+    webm_url = None
+    if webm_output and webm_output.exists():
+        webm_rel_path = webm_output.relative_to(BASE_UPLOAD_DIR)
+        webm_url = f"{BASE_URL}/{webm_rel_path}"
+
     return ModelUploadResponse(
         id=model.id,
         name=model.name,
         url=f"{BASE_URL}/uploads/users/{user_id}/models/{model_id}{ext}",
         uploaded_at=now_iso,
+        webm_url=webm_url,
     )

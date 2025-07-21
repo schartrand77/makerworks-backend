@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 async def browse_all_filesystem_models() -> JSONResponse:
     """
     Scan the uploads/users/*/models folders on disk and return all models found.
-    Includes username, model file path, and optional thumbnail.
+    Includes username, model file path, optional thumbnail, and optional .webm turntable.
     """
     models_root = Path(settings.upload_dir) / "users"
     results: list[dict] = []
@@ -68,12 +68,23 @@ async def browse_all_filesystem_models() -> JSONResponse:
                     except ValueError:
                         logger.warning("⚠️ Skipping thumbnail with bad path: %s", thumb_file)
 
+                # Optional webm turntable
+                webm_url = None
+                webm_file = model_file.with_suffix(".webm")
+                if webm_file.exists():
+                    try:
+                        webm_rel_path = webm_file.relative_to(settings.upload_dir).as_posix()
+                        webm_url = f"/uploads/{webm_rel_path}"
+                    except ValueError:
+                        logger.warning("⚠️ Skipping webm with bad path: %s", webm_file)
+
                 model_data = {
                     "username": username,
                     "filename": model_file.name,
                     "path": model_rel_path,
                     "url": model_url,
                     "thumbnail_url": thumb_url,
+                    "webm_url": webm_url,
                 }
 
                 results.append(dict(model_data))

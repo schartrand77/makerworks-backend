@@ -109,6 +109,7 @@ class ModelMetadata(Base):
     filename: str = Column(String, nullable=False)
     file_url: str = Column(String, nullable=False)
     thumbnail_url: str | None = Column(String, nullable=True)
+    webm_url: str | None = Column(String, nullable=True)  # 👈 NEW
 
     geometry_hash: str | None = Column(String, nullable=True, index=True)
     is_duplicate: bool = Column(Boolean, default=False)
