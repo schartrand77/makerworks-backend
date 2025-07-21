@@ -98,15 +98,23 @@ mount(models.router, "/api/v1/models", ["models"])
 
 # ─── Mount Static Files ─────────────────────
 # Serve uploads properly using the @property
+uploads_path = settings.uploads_path
+
+if not uploads_path.exists():
+    uploads_path.mkdir(parents=True, exist_ok=True)
+    logger.info(f"📁 Created uploads directory at: {uploads_path}")
+else:
+    logger.info(f"📁 Uploads directory exists: {uploads_path}")
+
+# Mount the uploads directory at `/uploads`
 app.mount(
     "/uploads",
-    StaticFiles(directory=settings.uploads_path),
+    StaticFiles(directory=uploads_path),
     name="uploads"
 )
-logger.info(f"📁 Uploads directory served from {settings.uploads_path} at /uploads")
+logger.info(f"📁 Uploads served from {uploads_path} at /uploads")
 
-
-# Optional: if you have another static dir elsewhere, you can still serve it:
+# Optional: mount additional static directories if needed
 # app.mount(
 #     "/static",
 #     StaticFiles(directory=settings.static_path),
