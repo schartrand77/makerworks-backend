@@ -1,107 +1,152 @@
-# app/routes/favorites.py
+# app/routes/filaments.py
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Path
-from fastapi.responses import Response
-from sqlalchemy.orm import Session
+from typing import List, Optional
 
-from app.db.database import get_db
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.database import get_async_db
+from app.models import Filament
+from app.schemas import FilamentOut
 from app.dependencies.auth import get_user_from_headers
-from app.models import Favorite, ModelMetadata, User
-from app.schemas import ModelOut
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/favorites", tags=["Favorites"])
+router = APIRouter(prefix="/filaments", tags=["Filaments"])
 
 
 @router.get(
     "/",
-    summary="Get current user's favorited models",
+    summary="List filaments with optional filters and pagination",
+    response_model=List[FilamentOut],
     status_code=status.HTTP_200_OK,
-    response_model=list[ModelOut],
 )
-async def get_user_favorites(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_user_from_headers),
+async def list_filaments(
+    db: AsyncSession = Depends(get_async_db),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    type: Optional[str] = Query(None, description="Filter by type"),
+    subtype: Optional[str] = Query(None, description="Filter by subtype"),
+    color_name: Optional[str] = Query(None, description="Filter by color name"),
+    skip: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(25, gt=0, le=100, description="Pagination limit"),
 ):
     """
-    Retrieve all models favorited by the currently authenticated user.
+    Return a list of filaments, optionally filtered and paginated.
     """
-    logger.info("🔷 Fetching favorites for user_id=%s", user.id)
+    logger.info("📋 Listing filaments with filters: is_active=%s, type=%s, subtype=%s, color=%s",
+                is_active, type, subtype, color_name)
 
-    result = (
-        db.query(ModelMetadata)
-        .join(Favorite, Favorite.model_id == ModelMetadata.id)
-        .filter(Favorite.user_id == user.id)
-        .all()
-    )
+    stmt = select(Filament)
 
-    logger.debug("✅ Found %d favorites for user %s", len(result), user.username)
+    if is_active is not None:
+        stmt = stmt.where(Filament.is_active == is_active)
+    if type:
+        stmt = stmt.where(Filament.type.ilike(f"%{type}%"))
+    if subtype:
+        stmt = stmt.where(Filament.subtype.ilike(f"%{subtype}%"))
+    if color_name:
+        stmt = stmt.where(Filament.color_name.ilike(f"%{color_name}%"))
 
-    return [
-        ModelOut.model_validate(m).serialize(
-            role="admin" if user.role == "admin" else "user"
-        )
-        for m in result
-    ]
+    stmt = stmt.offset(skip).limit(limit)
+
+    result = await db.execute(stmt)
+    filaments = result.scalars().all()
+
+    logger.debug("✅ Found %d filaments", len(filaments))
+
+    return [FilamentOut.model_validate(f).model_dump() for f in filaments]
 
 
 @router.post(
-    "/{model_id}",
-    summary="Add model to favorites",
+    "/",
+    summary="Create a new filament",
+    response_model=FilamentOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def add_to_favorites(
-    model_id: int = Path(..., description="Model ID to favorite"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_user_from_headers),
+async def create_filament(
+    filament_in: FilamentOut,
+    db: AsyncSession = Depends(get_async_db),
+    user=Depends(get_user_from_headers),
 ):
     """
-    Add a model to the authenticated user's favorites list.
+    Create a new filament entry.
     """
-    logger.info("➕ Adding model_id=%s to user_id=%s favorites", model_id, user.id)
+    logger.info("➕ Creating filament: %s", filament_in.model_dump())
 
-    # Check model exists
-    model = db.query(ModelMetadata).filter_by(id=model_id).first()
-    if not model:
-        logger.warning("❌ Model %s not found", model_id)
-        raise HTTPException(status_code=404, detail="Model not found")
+    filament = Filament(**filament_in.model_dump())
+    db.add(filament)
+    await db.commit()
+    await db.refresh(filament)
 
-    exists = db.query(Favorite).filter_by(user_id=user.id, model_id=model_id).first()
-    if exists:
-        logger.info("⚠️ Model %s already in favorites for user %s", model_id, user.username)
-        return {"detail": "Already favorited"}
+    logger.info("✅ Created filament with ID %s", filament.id)
 
-    db.add(Favorite(user_id=user.id, model_id=model_id))
-    db.commit()
+    return FilamentOut.model_validate(filament).model_dump()
 
-    logger.info("✅ Added model %s to favorites for user %s", model_id, user.username)
-    return {"detail": "Model added to favorites"}
+
+@router.put(
+    "/{fid}",
+    summary="Update an existing filament",
+    response_model=FilamentOut,
+    status_code=status.HTTP_200_OK,
+)
+async def update_filament(
+    fid: int,
+    filament_in: FilamentOut,
+    db: AsyncSession = Depends(get_async_db),
+    user=Depends(get_user_from_headers),
+):
+    """
+    Update a filament by ID.
+    """
+    logger.info("✏️ Updating filament ID %s", fid)
+
+    stmt = select(Filament).where(Filament.id == fid)
+    result = await db.execute(stmt)
+    filament = result.scalar_one_or_none()
+
+    if not filament:
+        logger.warning("❌ Filament ID %s not found", fid)
+        raise HTTPException(status_code=404, detail="Filament not found")
+
+    for key, value in filament_in.model_dump().items():
+        setattr(filament, key, value)
+
+    await db.commit()
+    await db.refresh(filament)
+
+    logger.info("✅ Updated filament ID %s", fid)
+
+    return FilamentOut.model_validate(filament).model_dump()
 
 
 @router.delete(
-    "/{model_id}",
-    summary="Remove model from favorites",
+    "/{fid}",
+    summary="Delete a filament",
     status_code=status.HTTP_200_OK,
 )
-async def remove_from_favorites(
-    model_id: int = Path(..., description="Model ID to remove from favorites"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_user_from_headers),
+async def delete_filament(
+    fid: int,
+    db: AsyncSession = Depends(get_async_db),
+    user=Depends(get_user_from_headers),
 ):
     """
-    Remove a model from the user's favorites list.
+    Delete a filament by ID.
     """
-    logger.info("➖ Removing model_id=%s from user_id=%s favorites", model_id, user.id)
+    logger.info("🗑️ Deleting filament ID %s", fid)
 
-    favorite = db.query(Favorite).filter_by(user_id=user.id, model_id=model_id).first()
-    if not favorite:
-        logger.warning("❌ Favorite model %s not found for user %s", model_id, user.username)
-        raise HTTPException(status_code=404, detail="Favorite not found")
+    stmt = select(Filament).where(Filament.id == fid)
+    result = await db.execute(stmt)
+    filament = result.scalar_one_or_none()
 
-    db.delete(favorite)
-    db.commit()
+    if not filament:
+        logger.warning("❌ Filament ID %s not found", fid)
+        raise HTTPException(status_code=404, detail="Filament not found")
 
-    logger.info("✅ Removed model %s from favorites for user %s", model_id, user.username)
-    return {"detail": "Model removed from favorites"}
+    await db.delete(filament)
+    await db.commit()
+
+    logger.info("✅ Deleted filament ID %s", fid)
+
+    return {"detail": "Filament deleted"}

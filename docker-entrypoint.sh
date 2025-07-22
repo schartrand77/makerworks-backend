@@ -1,7 +1,11 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 cd /app
 
-# Listen on 0.0.0.0 so it’s reachable from host
-exec gunicorn -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 app.main:app
+# Start the FastAPI app with Gunicorn + Uvicorn workers
+exec gunicorn \
+    -w 4 \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    app.main:app

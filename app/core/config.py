@@ -1,5 +1,4 @@
 import os
-import socket
 from functools import lru_cache
 
 from dotenv import load_dotenv
@@ -7,7 +6,7 @@ from pydantic import AnyHttpUrl, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ─────────────────────────────────────────────
-# Load from local .env explicitly (robust fallback)
+# Load from .env explicitly (robust fallback)
 # ─────────────────────────────────────────────
 env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 if not os.path.exists(env_path):
@@ -57,7 +56,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url_sync(self) -> str:
-        """Return the sync-compatible version for Alembic and legacy tooling."""
+        """Return sync-compatible version for Alembic and legacy tooling."""
         return self.async_database_url.replace("+asyncpg", "")
 
     # ────────────────
@@ -66,27 +65,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(..., alias="REDIS_URL")
 
     # ────────────────
-    # AUTHENTIK / OIDC
-    # ────────────────
-    raw_authentik_url: str = Field(..., alias="AUTHENTIK_URL")
-    authentik_client_id: str = Field(..., alias="AUTHENTIK_CLIENT_ID")
-    authentik_client_secret: str = Field(..., alias="AUTHENTIK_CLIENT_SECRET")
-
-    @property
-    def authentik_url(self) -> str:
-        hostname = (
-            self.raw_authentik_url.replace("http://", "")
-            .replace("https://", "")
-            .split(":")[0]
-        )
-        try:
-            socket.gethostbyname(hostname)
-            return self.raw_authentik_url
-        except OSError:
-            return "http://localhost:9000"  # fallback for dev
-
-    # ────────────────
-    # JWT Algorithm (RS256 for Authentik)
+    # JWT
     # ────────────────
     algorithm: str = Field(default="RS256", alias="JWT_ALGORITHM")
 

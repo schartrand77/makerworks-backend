@@ -1,15 +1,17 @@
 # app/routes/estimates.py
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.dependencies.auth import get_user_from_headers
 from app.models import User
 from app.schemas.estimate import EstimateRequest, EstimateResponse
 from app.services.estimate_service import calculate_estimate
 
 router = APIRouter(prefix="/estimates", tags=["Estimates"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -18,15 +20,21 @@ router = APIRouter(prefix="/estimates", tags=["Estimates"])
     response_model=EstimateResponse,
     status_code=status.HTTP_200_OK,
 )
-def estimate_model(
+async def estimate_model(
     data: EstimateRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     user: User = Depends(get_user_from_headers),
 ):
     """
     Estimate print time and cost based on user-selected options and model metadata.
     """
     try:
-        return calculate_estimate(data, db)
+        result = await calculate_estimate(data, db)
+        return result
+    except ValueError as e:
+        # e.g., invalid input, missing metadata, etc.
+        logger.warning(f"[ESTIMATE] Bad request: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid estimate request: {e!s}") from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Estimation failed: {e!s}") from e
+        logger.exception(f"[ESTIMATE] Internal error: {e}")
+        raise HTTPException(status_code=500, detail="Estimation failed due to server error.") from e

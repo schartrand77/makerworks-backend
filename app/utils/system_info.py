@@ -1,174 +1,107 @@
+"""
+System info utilities for MakerWorks.
+"""
+
+import os
 import platform
-import subprocess
+import psutil
 import sys
 import time
-from datetime import datetime, timedelta
+import subprocess
+import logging
 
-import psutil
+logger = logging.getLogger("makerworks")
 
-from .boot_messages import random_boot_message
-from .logging import configure_colorlog, logger
-
-# Record startup time
 START_TIME = time.time()
 
-
-def get_uptime() -> float:
-    """
-    Returns uptime in seconds since START_TIME.
-    """
-    return time.time() - START_TIME
-
-
-# ANSI colors
-RESET = "\033[0m"
-GREEN = "\033[92m"
-RED = "\033[91m"
-CYAN = "\033[96m"
-BLUE = "\033[94m"
-YELLOW = "\033[93m"
-
-# Configure colored logs
-configure_colorlog()
-
-
+# ────────────── TTY COLORS ──────────────
 def is_tty() -> bool:
-    """
-    Detect if stdout is a TTY (interactive terminal).
-    """
     return sys.stdout.isatty()
 
 
-def color(text: str, color_code: str) -> str:
+def color(text: str, code: str) -> str:
     if is_tty():
-        return f"{color_code}{text}{RESET}"
+        return f"{code}{text}\033[0m"
     return text
 
 
-def detect_gpus() -> list[str]:
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+CYAN = "\033[96m"
+
+# ────────────── SYSTEM SNAPSHOT ──────────────
+def get_system_status_snapshot() -> dict:
     """
-    Detect GPUs via nvidia-smi or torch.
-    Returns a list of GPU names or [] if none detected.
+    Return a minimal system status snapshot dict.
     """
-    gpus = []
-    # Try nvidia-smi
+    uptime_sec = time.time() - psutil.boot_time()
+    try:
+        load1, load5, load15 = os.getloadavg()
+    except Exception:
+        load1 = load5 = load15 = None
+
+    gpu = detect_gpu()
+
+    return {
+        "platform": f"{platform.system()} {platform.release()}",
+        "cpu_cores": psutil.cpu_count(),
+        "memory_gb": round(psutil.virtual_memory().total / (1024 ** 3), 2),
+        "uptime_seconds": int(uptime_sec),
+        "load_avg": {
+            "1min": load1,
+            "5min": load5,
+            "15min": load15
+        },
+        "gpu": gpu
+    }
+
+
+# ────────────── GPU DETECTION ──────────────
+def detect_gpu() -> str:
     try:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True
         )
-        gpus = [
-            line.strip() for line in result.stdout.strip().splitlines() if line.strip()
-        ]
-    except (subprocess.CalledProcessError, FileNotFoundError):
+        gpus = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        if gpus:
+            return ", ".join(gpus)
+    except Exception:
         pass
 
-    # Try torch
-    if not gpus:
-        try:
-            import torch
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpus = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+            if gpus:
+                return ", ".join(gpus)
+    except ImportError:
+        pass
 
-            if torch.cuda.is_available():
-                gpus = [
-                    torch.cuda.get_device_name(i)
-                    for i in range(torch.cuda.device_count())
-                ]
-        except ImportError:
-            pass
+    if platform.system() == "Darwin" and platform.machine().startswith("arm"):
+        return "Apple Metal"
 
-    # macOS Apple Silicon
-    if (
-        not gpus
-        and platform.system() == "Darwin"
-        and platform.machine().startswith("arm")
-    ):
-        gpus.append("Apple Metal")
-
-    return gpus
+    return "None"
 
 
-def system_snapshot() -> dict:
-    """
-    Gather system information into a snapshot dict.
-    """
-    # compute uptime
-    boot_time = datetime.fromtimestamp(psutil.boot_time())
-    uptime_td = datetime.utcnow() - boot_time
-
-    snapshot = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "uptime": str(timedelta(seconds=int(uptime_td.total_seconds()))),
-        "host": platform.node(),
-        "cpu_logical": psutil.cpu_count(),
-        "mem_gb": psutil.virtual_memory().total / (1024**3),
-        "gpus": detect_gpus(),
-        "statuses": {
-            "PostgreSQL": {"connected": True},
-            "Redis": {"connected": True},
-            "Authentik": {"connected": True},
-            "Frontend": {"connected": True},
-        },
-    }
-    return snapshot
-
-
-def log_snapshot(snapshot: dict):
-    """
-    Logs the system snapshot and prints a colored version to the console if TTY.
-    """
-    logger.info("📊 System Snapshot on Startup:")
-    logger.info(f"   Timestamp: {snapshot['timestamp']}")
-    logger.info(f"   Uptime: {snapshot['uptime']}")
-    logger.info(f"   Host: {snapshot['host']}")
-    logger.info(f"   CPU Cores: {snapshot['cpu_logical']}")
-    logger.info(f"   Memory: {snapshot['mem_gb']:.2f} GB")
-    logger.info(f"   GPUs: {', '.join(snapshot['gpus']) or 'None'}")
-    logger.info("   Statuses:")
-
-    for name, status in snapshot["statuses"].items():
-        connected = status["connected"]
-        mark = "✅" if connected else "❌"
-        logger.info(f"      {mark} {name}")
-
-    # optionally print a more colorful version to stdout
-    if is_tty():
-        print("\n" + color("📊 System Snapshot (Color)", YELLOW))
-        print(f"   {color('Timestamp:', CYAN)} {snapshot['timestamp']}")
-        print(f"   {color('Uptime:', CYAN)} {snapshot['uptime']}")
-        print(f"   {color('Host:', CYAN)} {snapshot['host']}")
-        print(f"   {color('CPU Cores:', CYAN)} {snapshot['cpu_logical']}")
-        print(f"   {color('Memory:', CYAN)} {snapshot['mem_gb']:.2f} GB")
-        print(f"   {color('GPUs:', CYAN)} {', '.join(snapshot['gpus']) or 'None'}")
-        print(f"   {color('Statuses:', CYAN)}")
-        for name, status in snapshot["statuses"].items():
-            connected = status["connected"]
-            mark = color("✅", GREEN) if connected else color("❌", RED)
-            name_colored = color(name, BLUE if connected else RED)
-            print(f"      {mark} {name_colored}")
-        print()  # spacing
-
-
+# ────────────── STARTUP BANNER ──────────────
 def startup_banner():
     """
-    Prints and logs the boot message + system snapshot.
+    Logs a minimal, colorized system banner.
     """
-    msg = random_boot_message()
-    logger.info(f"🎬 Boot Message: {msg}")
-    if is_tty():
-        print(color(f"🎬 Boot Message: {msg}", YELLOW))
-    snap = system_snapshot()
-    log_snapshot(snap)
+    snap = get_system_status_snapshot()
 
+    logger.info(color("🚀 MakerWorks Backend Started", GREEN))
+    logger.info(f"{color('🖥️  Platform:', CYAN)} {snap['platform']} | CPU: {snap['cpu_cores']} cores")
+    logger.info(f"{color('📦 Memory:', CYAN)} {snap['memory_gb']} GB total")
+    logger.info(f"{color('⏳ Uptime:', CYAN)} {snap['uptime_seconds']//3600}h {(snap['uptime_seconds']//60)%60}m")
+    if snap['load_avg']['1min'] is not None:
+        logger.info(
+            f"{color('📈 Load Average (1/5/15):', CYAN)} "
+            f"{snap['load_avg']['1min']:.2f} / {snap['load_avg']['5min']:.2f} / {snap['load_avg']['15min']:.2f}"
+        )
+    logger.info(f"{color('🎮 GPU:', CYAN)} {snap['gpu']}")
 
-def get_system_status_snapshot() -> dict:
-    """
-    Returns a snapshot of the current system status.
-    """
-    return system_snapshot()
-
-
-if __name__ == "__main__":
-    # Allow running as CLI: python -m app.utils.system_info
-    startup_banner()
+    elapsed = time.time() - START_TIME
+    logger.info(f"{color('⏱️  Startup Time:', CYAN)} {elapsed:.2f} seconds")

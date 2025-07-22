@@ -1,14 +1,14 @@
 import logging
 import os
 import platform
+import subprocess
 import sys
 import time
 
 import psutil
 import psycopg2
 import redis
-import requests  # type: ignore[import-untyped]
-from prometheus_client import Gauge, Info
+from prometheus_client import Gauge
 from psycopg2 import OperationalError
 
 from app.utils.boot_messages import random_boot_message
@@ -23,11 +23,23 @@ START_TIME = time.time()
 logger = logging.getLogger("makerworks")
 logger.setLevel(logging.INFO)
 
+# ────────────── TTY COLORS ──────────────
+def is_tty() -> bool:
+    return sys.stdout.isatty()
 
+def color(text: str, code: str) -> str:
+    if is_tty():
+        return f"{code}{text}\033[0m"
+    return text
+
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+CYAN = "\033[96m"
+
+# ────────────── COLORLOG ──────────────
 def configure_colorlog():
-    """
-    Configures the logger with colorlog if available.
-    """
+    """Configure logger with optional color output."""
     if logger.hasHandlers():
         logger.handlers.clear()
 
@@ -51,31 +63,15 @@ def configure_colorlog():
     logger.addHandler(handler)
 
 
-# call it immediately to set up logging on import
-configure_colorlog()
-
-
-# ─────────── Prometheus Gauges ───────────
-startup_time_gauge = Gauge(
-    "makerworks_startup_seconds", "Time taken to start MakerWorks backend"
-)
-route_count_gauge = Gauge(
-    "makerworks_route_count", "Total number of registered API routes"
-)
+# ────────────── PROMETHEUS GAUGES ──────────────
+startup_time_gauge = Gauge("makerworks_startup_seconds", "Time taken to start MakerWorks backend")
 redis_status_gauge = Gauge("makerworks_redis_up", "Redis availability (1=up, 0=down)")
-postgres_status_gauge = Gauge(
-    "makerworks_postgres_up", "PostgreSQL availability (1=up, 0=down)"
-)
-authentik_status_gauge = Gauge(
-    "makerworks_authentik_up", "Authentik availability (1=up, 0=down)"
-)
+postgres_status_gauge = Gauge("makerworks_postgres_up", "PostgreSQL availability (1=up, 0=down)")
 memory_used_gauge = Gauge("makerworks_memory_used_mb", "Memory used (in MB)")
 memory_percent_gauge = Gauge("makerworks_memory_percent", "Percent memory used")
-gpu_info = Info("makerworks_gpu", "GPU detected on system")
+gpu_info = Gauge("makerworks_gpu_info", "GPU detected on system (1 if present, 0 otherwise)")
 
-_previous_routes: set = set()
-
-
+# ────────────── CHECKERS ──────────────
 def check_redis_available(url: str) -> bool:
     try:
         r = redis.Redis.from_url(url, socket_connect_timeout=1)
@@ -83,10 +79,9 @@ def check_redis_available(url: str) -> bool:
     except Exception:
         return False
 
-
 def check_postgres_available() -> bool:
     try:
-        dsn = os.getenv("DATABASE_URL") or ""
+        dsn = os.getenv("DATABASE_URL", "")
         clean_dsn = dsn.replace("postgresql+psycopg2://", "postgresql://")
         conn = psycopg2.connect(clean_dsn, connect_timeout=1)
         conn.close()
@@ -94,43 +89,25 @@ def check_postgres_available() -> bool:
     except OperationalError:
         return False
 
-
-def check_authentik_available() -> bool:
-    default_url = "http://authentik:9000/outpost.goauthentik.io/ping"
-    fallback_url = "http://localhost:9000/outpost.goauthentik.io/ping"
-    attempted_urls = []
-
-    for url in [default_url, fallback_url]:
-        attempted_urls.append(url)
-        try:
-            resp = requests.get(url, timeout=2)
-            if resp.status_code == 204:
-                logger.info(f"🛂 Authentik: Connected at {url}")
-                return True
-        except Exception as e:
-            logger.debug(f"🛂 Authentik: Failed at {url} — {type(e).__name__}")
-
-    logger.error(f"🛂 Authentik: Unreachable at {attempted_urls}")
-    return False
-
-
 def detect_gpu() -> str:
-    # Improved GPU detection
     try:
-        import subprocess
-
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True
         )
-        gpus = [
-            line.strip() for line in result.stdout.strip().splitlines() if line.strip()
-        ]
+        gpus = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         if gpus:
             return ", ".join(gpus)
     except Exception:
+        pass
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpus = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+            if gpus:
+                return ", ".join(gpus)
+    except ImportError:
         pass
 
     if platform.system() == "Darwin" and platform.machine().startswith("arm"):
@@ -138,48 +115,79 @@ def detect_gpu() -> str:
 
     return "None"
 
-
-def startup_banner(route_count: int | None = None, routes: list[str] | None = None):
-    logger.info("🚀 MakerWorks Backend Started")
-    logger.info(f"🖥️  Platform: {platform.system()} {platform.release()}")
-    logger.info(f"🧠 CPU Cores: {os.cpu_count()}")
+# ────────────── BANNER ──────────────
+def startup_banner():
+    """
+    Logs a colorized, minimal, informative system startup banner.
+    No route counts. Includes gauges.
+    """
+    logger.info(color("🚀 MakerWorks Backend Started", GREEN))
+    logger.info(
+        f"{color('🖥️  Platform:', CYAN)} {platform.system()} {platform.release()} "
+        f"| CPU Cores: {os.cpu_count()}"
+    )
 
     mem = psutil.virtual_memory()
-    mem_used_mb = mem.used // (1024**2)
+    mem_used_mb = mem.used // (1024 ** 2)
+    mem_total_mb = mem.total // (1024 ** 2)
     logger.info(
-        f"📦 Memory: {mem_used_mb}MB used / {mem.total // (1024 ** 2)}MB total ({mem.percent}%)"
+        f"{color('📦 Memory:', CYAN)} {mem_used_mb} MB used / {mem_total_mb} MB "
+        f"({mem.percent}%)"
     )
     memory_used_gauge.set(mem_used_mb)
     memory_percent_gauge.set(mem.percent)
 
+    # Redis check
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
     redis_status = check_redis_available(redis_url)
+    redis_text = f"{'✅ Connected' if redis_status else '❌ Unavailable'}"
     logger.info(
-        f"🧱 Redis: {'Connected' if redis_status else 'Unavailable'} ({redis_url})"
+        f"{color('🧱 Redis:', CYAN)} {color(redis_text, GREEN if redis_status else RED)} "
+        f"({redis_url})"
     )
     redis_status_gauge.set(1 if redis_status else 0)
 
+    # PostgreSQL check
     pg_status = check_postgres_available()
-    logger.info(f"🗃️  PostgreSQL: {'Connected' if pg_status else 'Unavailable'}")
+    pg_text = f"{'✅ Connected' if pg_status else '❌ Unavailable'}"
+    logger.info(
+        f"{color('🗃️  PostgreSQL:', CYAN)} {color(pg_text, GREEN if pg_status else RED)}"
+    )
     postgres_status_gauge.set(1 if pg_status else 0)
 
-    ak_status = check_authentik_available()
-    logger.info(f"🛂 Authentik: {'Available' if ak_status else 'Unavailable'}")
-    authentik_status_gauge.set(1 if ak_status else 0)
-
+    # GPU
     gpu = detect_gpu()
-    logger.info(f"🎮 GPU: {gpu}")
-    gpu_info.info({"type": gpu})
+    if gpu != "None":
+        logger.info(f"{color('🎮 GPU:', CYAN)} {color(gpu, GREEN)}")
+        gpu_info.set(1)
+    else:
+        logger.info(f"{color('🎮 GPU:', CYAN)} {color('None detected', YELLOW)}")
+        gpu_info.set(0)
 
-    if route_count is not None:
-        logger.info(f"📚 Registered Routes: {route_count}")
-        route_count_gauge.set(route_count)
+    # System load
+    try:
+        load1, load5, load15 = os.getloadavg()
+        logger.info(
+            f"{color('📈 Load Average (1/5/15 min):', CYAN)} "
+            f"{load1:.2f} / {load5:.2f} / {load15:.2f}"
+        )
+    except (AttributeError, OSError):
+        logger.info(f"{color('📈 Load Average:', CYAN)} Not available")
 
-    global _previous_routes
-    _previous_routes = set(routes or [])
+    # Uptime
+    uptime_sec = time.time() - psutil.boot_time()
+    uptime_hr = uptime_sec / 3600
+    logger.info(f"{color('⏳ System Uptime:', CYAN)} {uptime_hr:.1f} hours")
 
+    # Startup time
     elapsed = time.time() - START_TIME
-    logger.info(f"⏱️  Startup Time: {elapsed:.2f}s")
+    logger.info(f"{color('⏱️  Startup Time:', CYAN)} {elapsed:.2f} seconds")
     startup_time_gauge.set(elapsed)
 
-    logger.info(f"🎬 Boot Message: {random_boot_message()}")
+    # Boot message
+    msg = random_boot_message()
+    logger.info(f"{color('🎬 Boot Message:', CYAN)} {color(msg, YELLOW)}")
+
+
+# configure logger immediately
+configure_colorlog()

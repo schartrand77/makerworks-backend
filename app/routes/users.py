@@ -1,29 +1,34 @@
+# app/routes/users.py
+
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.dependencies.auth import get_current_user
-from app.models.models import User
-from app.schemas.user import (
-    UpdateUserProfile,
-    UserOut,
-)
+from app.models import User, Favorite, ModelMetadata
+from app.schemas.user import UpdateUserProfile, UserOut
+from app.schemas.models import ModelOut
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["users"])
+router = APIRouter()
 
 # ─────────────────────────────────────────────────────────────
 # PATCH /users/me
 # ─────────────────────────────────────────────────────────────
 
-@router.patch("/me", response_model=UserOut, summary="Update user profile (bio, etc.)")
+@router.patch(
+    "/me",
+    response_model=UserOut,
+    summary="Update user profile (bio, etc.)",
+    status_code=status.HTTP_200_OK,
+)
 async def update_profile(
     payload: UpdateUserProfile,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Allows a user to update their profile (currently only bio).
@@ -39,7 +44,12 @@ async def update_profile(
 # GET /users/me
 # ─────────────────────────────────────────────────────────────
 
-@router.get("/me", response_model=UserOut, summary="Get current authenticated user")
+@router.get(
+    "/me",
+    response_model=UserOut,
+    summary="Get current authenticated user",
+    status_code=status.HTTP_200_OK,
+)
 async def get_me(current_user: User = Depends(get_current_user)):
     """
     Returns current user info from the database.
@@ -52,8 +62,12 @@ async def get_me(current_user: User = Depends(get_current_user)):
 # GET /users/username/check
 # ─────────────────────────────────────────────────────────────
 
-@router.get("/username/check", summary="Check if username is available")
-async def check_username(username: str, db: AsyncSession = Depends(get_db)):
+@router.get(
+    "/username/check",
+    summary="Check if username is available",
+    status_code=status.HTTP_200_OK,
+)
+async def check_username(username: str, db: AsyncSession = Depends(get_async_db)):
     """
     Check if a username is already taken.
     """
@@ -70,10 +84,14 @@ async def check_username(username: str, db: AsyncSession = Depends(get_db)):
 # GET /users (admin-only)
 # ─────────────────────────────────────────────────────────────
 
-@router.get("/", summary="Admin-only: list all users")
+@router.get(
+    "/",
+    summary="Admin-only: list all users",
+    status_code=status.HTTP_200_OK,
+)
 async def get_all_users(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Fetch all users — admin only.
@@ -92,13 +110,27 @@ async def get_all_users(
 # GET /users/{user_id}/favorites
 # ─────────────────────────────────────────────────────────────
 
-@router.get("/{user_id}/favorites", summary="Get user's favorite models")
+@router.get(
+    "/{user_id}/favorites",
+    summary="Get user's favorite models",
+    status_code=status.HTTP_200_OK,
+)
 async def get_user_favorites(
     user_id: str = Path(..., description="User ID to fetch favorites for"),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Fetch a user's favorite models.
-    Currently returns an empty list; wire to DB if needed.
     """
     logger.info("🔷 Fetching favorites for user_id=%s", user_id)
-    return []
+
+    result = await db.execute(
+        select(ModelMetadata)
+        .join(Favorite, Favorite.model_id == ModelMetadata.id)
+        .where(Favorite.user_id == user_id)
+    )
+    models = result.scalars().all()
+
+    logger.info("✅ Found %d favorite models for user_id=%s", len(models), user_id)
+
+    return [ModelOut.model_validate(m).model_dump() for m in models]

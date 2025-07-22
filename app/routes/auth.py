@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.db.session import get_db
+from app.db.session import get_async_db
 from app.models.models import User
 from app.schemas.auth import SignupRequest, SigninRequest, AuthPayload, UserOut
 from app.services.token_service import create_access_token, decode_token
@@ -39,7 +39,7 @@ def get_guest_user() -> UserOut:
 
 async def get_current_user(
     authorization: str = Header(default=None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> UserOut:
     """
     Tries to fetch the current authenticated user.
@@ -67,7 +67,7 @@ async def get_current_user(
 
 
 @router.post("/signup", response_model=AuthPayload)
-async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
+async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_async_db)):
     """
     Create a new user account.
     """
@@ -99,7 +99,7 @@ async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/signin", response_model=AuthPayload)
-async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_db)):
+async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_async_db)):
     """
     Authenticate an existing user.
     """

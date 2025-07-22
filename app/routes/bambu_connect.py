@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.db.session import get_async_db
 from app.dependencies import get_current_user
 from app.schemas.user import UserOut
 
@@ -65,7 +65,7 @@ async def x1c_status(
 async def x1c_command(
     cmd: X1CCommand,
     current_user: UserOut = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
 ):
     """
     Send a command to Bambu Lab X1C.

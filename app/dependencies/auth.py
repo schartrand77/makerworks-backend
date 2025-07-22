@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.models.models import User
 from app.schemas.user import UserOut
 from app.services.token_service import decode_token
@@ -51,7 +51,7 @@ async def resolve_user(user_id: str, db: AsyncSession) -> User | None:
 
 async def get_current_user(
     authorization: str = Header(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> User | UserOut:
     """
     Extracts and returns the current authenticated User from DB
@@ -86,7 +86,7 @@ async def get_current_user(
 
 async def get_user_from_headers(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> User:
     """
     Similar to get_current_user but raises if no valid user is found.

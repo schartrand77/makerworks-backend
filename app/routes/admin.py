@@ -1,137 +1,100 @@
 # app/routes/admin.py
 
-import os
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.dependencies.auth import admin_required
-from app.models.models import ModelMetadata
+from app.models.models import ModelMetadata, User
 from app.services.auth_service import log_action
-from app.utils.logging import logger  # make sure logger is imported
+from app.utils.logging import logger
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
-
-AUTHENTIK_API = os.getenv("AUTHENTIK_API_URL", "http://authentik:9000")
-AUTHENTIK_TOKEN = os.getenv("AUTHENTIK_API_TOKEN", "")
+router = APIRouter()
 
 # In-memory temporary config store
 discord_config = {
-    "webhook_url": os.getenv("DISCORD_WEBHOOK_URL", ""),
-    "channel_id": os.getenv("DISCORD_CHANNEL_ID", ""),
+    "webhook_url": "",
+    "channel_id": "",
     "feed_enabled": True,
 }
 
 
-async def get_user_groups(user_id: str) -> list[str]:
-    """Fetch group names for a user from Authentik."""
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.get(
-                f"{AUTHENTIK_API}/api/v3/core/users/{user_id}/groups/",
-                headers={"Authorization": f"Bearer {AUTHENTIK_TOKEN}"},
-            )
-            res.raise_for_status()
-            groups = res.json()
-            return [g["name"] for g in groups]
-        except httpx.RequestError:
-            return ["error:authentik-unreachable"]
-        except httpx.HTTPStatusError:
-            return ["error:authentik-access-denied"]
-
-
 @router.get("/users")
-async def get_all_users(admin=Depends(admin_required)):
+async def get_all_users(db: AsyncSession = Depends(get_async_db), admin=Depends(admin_required)):
     """
-    List all users from Authentik with their groups.
+    List all users.
     """
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.get(
-                f"{AUTHENTIK_API}/api/v3/core/users/",
-                headers={"Authorization": f"Bearer {AUTHENTIK_TOKEN}"},
-            )
-            res.raise_for_status()
-            users = res.json()
-
-            # Enrich each user with their groups
-            for user in users:
-                user["groups"] = await get_user_groups(user["pk"])
-
-            return users
-
-        except httpx.RequestError as e:
-            raise HTTPException(
-                status_code=500, detail="Unable to reach Authentik"
-            ) from e
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail="Failed to fetch users from Authentik",
-            ) from e
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    return users
 
 
 @router.post("/users/{user_id}/promote")
 async def promote_user(
-    user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
+    user_id: str, db: AsyncSession = Depends(get_async_db), admin=Depends(admin_required)
 ):
     """
-    Log a promotion event (actual promotion happens in Authentik).
+    Promote a user to admin role.
     """
-    await log_action(admin.sub, "promote_user", int(user_id), db)
-    return {
-        "status": "noop",
-        "message": "Promotion should be done in Authentik Groups or Roles",
-    }
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.role = "admin"
+    await log_action(admin.sub, "promote_user", user_id, db)
+    await db.commit()
+    return {"status": "ok", "message": f"User {user_id} promoted to admin."}
 
 
 @router.post("/users/{user_id}/demote")
 async def demote_user(
-    user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
+    user_id: str, db: AsyncSession = Depends(get_async_db), admin=Depends(admin_required)
 ):
     """
-    Log a demotion event (actual demotion happens in Authentik).
+    Demote an admin user back to regular user.
     """
-    await log_action(admin.sub, "demote_user", int(user_id), db)
-    return {
-        "status": "noop",
-        "message": "Demotion should be handled via Authentik roles",
-    }
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.role = "user"
+    await log_action(admin.sub, "demote_user", user_id, db)
+    await db.commit()
+    return {"status": "ok", "message": f"User {user_id} demoted to user."}
 
 
 @router.delete("/users/{user_id}")
 async def delete_user(
-    user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
+    user_id: str, db: AsyncSession = Depends(get_async_db), admin=Depends(admin_required)
 ):
     """
-    Log a deletion event (actual deletion happens in Authentik).
+    Delete a user account.
     """
-    await log_action(admin.sub, "delete_user", int(user_id), db)
-    return {
-        "status": "noop",
-        "message": "Deletion must be performed via Authentik UI/API",
-    }
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.delete(user)
+    await log_action(admin.sub, "delete_user", user_id, db)
+    await db.commit()
+    return {"status": "ok", "message": f"User {user_id} deleted."}
 
 
 @router.post("/users/{user_id}/reset-password")
 async def force_password_reset(
-    user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
+    user_id: str, db: AsyncSession = Depends(get_async_db), admin=Depends(admin_required)
 ):
     """
-    Log a password reset event (actual reset happens in Authentik).
+    Log a password reset event. Actual reset flow depends on frontend.
     """
-    await log_action(admin.sub, "force_password_reset", int(user_id), db)
+    await log_action(admin.sub, "force_password_reset", user_id, db)
     return {
         "status": "noop",
-        "message": "Password reset must be triggered in Authentik",
+        "message": "Password reset flow to be handled by frontend."
     }
 
 
 @router.get("/users/{user_id}/uploads")
 async def view_user_uploads(
-    user_id: str, db: AsyncSession = Depends(get_db), admin=Depends(admin_required)
+    user_id: str, db: AsyncSession = Depends(get_async_db), admin=Depends(admin_required)
 ):
     """
     View all uploads belonging to a specific user.
@@ -139,7 +102,8 @@ async def view_user_uploads(
     result = await db.execute(
         select(ModelMetadata).where(ModelMetadata.user_id == user_id)
     )
-    return result.scalars().all()
+    uploads = result.scalars().all()
+    return uploads
 
 
 @router.get("/discord/config")
@@ -154,7 +118,7 @@ async def get_discord_config(admin=Depends(admin_required)):
 async def update_discord_config(
     request: Request,
     admin=Depends(admin_required),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Update the Discord webhook/channel config.
@@ -167,11 +131,10 @@ async def update_discord_config(
             "feed_enabled": data.get("feed_enabled", discord_config["feed_enabled"]),
         }
     )
-    await log_action(admin.sub, "update_discord_config", int(admin.sub), db)
+    await log_action(admin.sub, "update_discord_config", admin.sub, db)
     return {"status": "ok", "message": "Discord configuration updated."}
 
 
-# 👑 Hidden God Mode unlock endpoint
 @router.post("/unlock")
 async def god_mode_unlock(request: Request, admin=Depends(admin_required)):
     """

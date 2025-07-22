@@ -8,7 +8,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.models.models import AuditLog, User
 from app.services.token_service import decode_token
 
@@ -48,7 +48,7 @@ decode_access_token = verify_token  # alias
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> User:
     """
     Returns the local User record corresponding to the Authentik-authenticated user.

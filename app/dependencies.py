@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.config.settings import settings
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.models.models import User
 from app.schemas.checkout import CheckoutRequest
 from app.services.token_service import decode_token
@@ -15,7 +15,7 @@ from app.services.token_service import decode_token
 
 async def get_current_user(
     authorization: str = Header(...),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> User:
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid Authorization header")

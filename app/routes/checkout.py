@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.dependencies.auth import get_current_user
 from app.models import Estimate, User
 from app.tasks.render import generate_gcode
@@ -15,11 +15,11 @@ from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/checkout", tags=["Checkout"])
+router = APIRouter(prefix="/checkout", tags=["checkout"])
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Stripe Setup
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 settings = get_settings()
 
 stripe.api_key = settings.stripe_secret_key
@@ -30,25 +30,25 @@ if not stripe.api_key:
     raise RuntimeError("❌ Missing STRIPE_SECRET_KEY")
 
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Pydantic Request Model
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 class CheckoutRequest(BaseModel):
     model_id: int = Field(..., description="Uploaded model ID")
     estimate_id: int = Field(..., description="Associated estimate ID")
     total_cost: float = Field(..., description="Final total cost in USD")
 
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Create Stripe Checkout Session
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 @router.post("/session", summary="Create a Stripe Checkout session")
 def create_checkout_session(
     data: CheckoutRequest,
     user: User = Depends(get_current_user),
 ):
     """
-    Creates a Stripe Checkout session for the specified model & estimate.
+    Create a Stripe Checkout session for the specified model & estimate.
     """
     try:
         session = stripe.checkout.Session.create(
@@ -61,7 +61,7 @@ def create_checkout_session(
                             "name": f"Model #{data.model_id}",
                             "description": f"Estimate ID: {data.estimate_id}",
                         },
-                        "unit_amount": int(data.total_cost * 100),  # cents
+                        "unit_amount": int(data.total_cost * 100),  # in cents
                     },
                     "quantity": 1,
                 }
@@ -83,22 +83,20 @@ def create_checkout_session(
         raise HTTPException(status_code=500, detail=f"Stripe error: {e!s}") from e
 
 
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 # Stripe Webhook Handler
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
 @router.post("/webhook", summary="Stripe webhook endpoint")
-async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_async_db)):
     """
-    Handles Stripe webhook events to mark payments complete & trigger G-code task.
+    Handle Stripe webhook events to mark payments complete & trigger G-code task.
     """
     payload = await request.body()
     sig = request.headers.get("stripe-signature")
 
     if not sig or not WEBHOOK_SECRET:
         logger.warning("⚠️ Missing Stripe signature or webhook secret")
-        raise HTTPException(
-            status_code=400, detail="Missing webhook signature or secret"
-        )
+        raise HTTPException(status_code=400, detail="Missing webhook signature or secret")
 
     try:
         event = stripe.Webhook.construct_event(payload, sig, WEBHOOK_SECRET)

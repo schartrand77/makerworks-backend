@@ -1,5 +1,5 @@
 from .auth import admin_required, get_current_admin_user, get_current_user
-from .db import get_db
+from .db import get_async_db
 
 get_current_admin = get_current_admin_user
 
@@ -8,5 +8,5 @@ __all__ = [
     "get_current_admin",  # Include alias
     "get_current_admin_user",
     "get_current_user",
-    "get_db",
+    "get_async_db",
 ]

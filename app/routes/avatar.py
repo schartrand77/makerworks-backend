@@ -7,18 +7,17 @@ from sqlalchemy import select
 from pathlib import Path
 from datetime import datetime
 import io
-import tempfile
 import subprocess
 import os
 import logging
 
-from app.db.database import get_db
+from app.db.database import get_async_db
 from app.models.models import User
 from app.schemas.user import AvatarUploadResponse
 from app.dependencies.auth import get_user_from_headers
 from app.config.settings import settings
 
-router = APIRouter(tags=["Users"])
+router = APIRouter(prefix="/api/v1/avatar")
 logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_MIME = {
@@ -55,20 +54,18 @@ def render_with_blender(input_path: Path, output_path: Path, thumb_path: Path, u
     subprocess.run(cmd, env=env, check=True)
 
 
-@router.post("/avatar", response_model=AvatarUploadResponse)
+@router.post("", response_model=AvatarUploadResponse)
 async def upload_avatar(
     file: UploadFile = File(...),
     user: User = Depends(get_user_from_headers),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     user_id = str(user.id)
-
     logger.info(f"[AVATAR] Upload initiated for user {user_id}")
 
-    content_type = file.content_type
-    if content_type not in ALLOWED_IMAGE_MIME:
-        logger.warning(f"[AVATAR] Unsupported content type: {content_type}")
-        raise HTTPException(400, detail=f"Unsupported image type: {content_type}")
+    if file.content_type not in ALLOWED_IMAGE_MIME:
+        logger.warning(f"[AVATAR] Unsupported content type: {file.content_type}")
+        raise HTTPException(400, detail=f"Unsupported image type: {file.content_type}")
 
     contents = await file.read()
     if len(contents) > MAX_FILE_SIZE_BYTES:
@@ -78,7 +75,7 @@ async def upload_avatar(
             detail=f"Avatar file too large (max {MAX_FILE_SIZE_BYTES//1024//1024} MB)",
         )
 
-    ext = ALLOWED_IMAGE_MIME[content_type]
+    ext = ALLOWED_IMAGE_MIME[file.content_type]
     avatar_filename = f"avatar{ext}"
     thumb_filename = f"avatar_thumb{ext}"
     avatar_dir = get_avatar_dir(user_id)
@@ -96,6 +93,7 @@ async def upload_avatar(
     tmp_input = avatar_dir / f"input{ext}"
     tmp_input.write_bytes(contents)
 
+    # Blender → GPU if available → else CPU
     try:
         use_gpu = False
         try:
@@ -115,6 +113,7 @@ async def upload_avatar(
 
         render_with_blender(tmp_input, save_path, thumb_path, use_gpu)
         tmp_input.unlink(missing_ok=True)
+
     except Exception as e:
         logger.error(f"[AVATAR] Blender failed, falling back to Pillow: {e}")
         from PIL import Image
@@ -154,8 +153,8 @@ async def upload_avatar(
     )
 
 
-@router.get("/avatar/{user_id}")
-async def get_avatar_url(user_id: str, db: AsyncSession = Depends(get_db)):
+@router.get("/{user_id}")
+async def get_avatar_url(user_id: str, db: AsyncSession = Depends(get_async_db)):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user or not user.avatar_url:
