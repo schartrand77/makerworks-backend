@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.db.database import get_async_db
-from app.dependencies.auth import get_user_from_headers
+from app.dependencies.auth import get_current_user
 from app.models import ModelMetadata as Model3D, User
 from app.schemas.models import ModelUploadResponse
 
@@ -78,7 +78,7 @@ async def upload_model(
     file: UploadFile = File(...),
     name: str = Form(None),
     description: str = Form(""),
-    user: User = Depends(get_user_from_headers),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     user_id = str(user.id)

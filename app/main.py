@@ -7,7 +7,9 @@ from fastapi.staticfiles import StaticFiles
 from app.utils.boot_messages import random_boot_message
 from app.utils.system_info import get_system_status_snapshot
 from app.config.settings import settings
-from app.db.database import init_db  # optional init on startup
+from app.db.database import init_db
+from app.startup.admin_seed import ensure_admin_user
+from app.services.redis_service import verify_redis_connection
 
 import logging
 from contextlib import asynccontextmanager
@@ -42,10 +44,18 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"✅ CORS origins allowed: {settings.cors_origins}")
     logger.info(f"🎬 Boot Message: {random_boot_message()}")
+
+    await verify_redis_connection()
     await init_db()
+
     yield
 
 app.router.lifespan_context = lifespan
+
+# ─── Startup Admin Seed ─────────────────────
+@app.on_event("startup")
+async def startup_event():
+    await ensure_admin_user()
 
 # ─── Debug CORS Middleware ──────────────────
 @app.middleware("http")
@@ -97,8 +107,14 @@ mount(upload.router, "/api/v1/upload", ["upload"])
 mount(filaments.router, "/api/v1/filaments", ["filaments"])
 mount(admin.router, "/api/v1/admin", ["admin"])
 mount(cart.router, "/api/v1/cart", ["cart"])
-mount(checkout.router, "/api/v1/checkout", ["checkout"])
+
+if settings.stripe_secret_key:
+    mount(checkout.router, "/api/v1/checkout", ["checkout"])
+else:
+    logger.warning("⚠️ STRIPE_SECRET_KEY is not set. Checkout routes not mounted.")
+
 mount(models.router, "/api/v1/models", ["models"])
+# 🔷 Discord route removed here.
 
 # ─── Mount Static Files ─────────────────────
 uploads_path = settings.uploads_path

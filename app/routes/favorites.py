@@ -1,5 +1,3 @@
-# app/routes/filaments.py
-
 import logging
 from typing import List, Optional
 
@@ -10,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_async_db
 from app.models import Filament
 from app.schemas import FilamentOut
-from app.dependencies.auth import get_user_from_headers
+from app.dependencies.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +66,7 @@ async def list_filaments(
 async def create_filament(
     filament_in: FilamentOut,
     db: AsyncSession = Depends(get_async_db),
-    user=Depends(get_user_from_headers),
+    user=Depends(get_current_user),
 ):
     """
     Create a new filament entry.
@@ -95,7 +93,7 @@ async def update_filament(
     fid: int,
     filament_in: FilamentOut,
     db: AsyncSession = Depends(get_async_db),
-    user=Depends(get_user_from_headers),
+    user=Depends(get_current_user),
 ):
     """
     Update a filament by ID.
@@ -129,7 +127,7 @@ async def update_filament(
 async def delete_filament(
     fid: int,
     db: AsyncSession = Depends(get_async_db),
-    user=Depends(get_user_from_headers),
+    user=Depends(get_current_user),
 ):
     """
     Delete a filament by ID.

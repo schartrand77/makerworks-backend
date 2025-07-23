@@ -1,6 +1,6 @@
 # app/routes/avatar.py
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -14,7 +14,7 @@ import logging
 from app.db.database import get_async_db
 from app.models.models import User
 from app.schemas.user import AvatarUploadResponse
-from app.dependencies.auth import get_user_from_headers
+from app.dependencies.auth import get_current_user
 from app.config.settings import settings
 
 router = APIRouter(prefix="/api/v1/avatar")
@@ -56,12 +56,18 @@ def render_with_blender(input_path: Path, output_path: Path, thumb_path: Path, u
 
 @router.post("", response_model=AvatarUploadResponse)
 async def upload_avatar(
+    request: Request,
     file: UploadFile = File(...),
-    user: User = Depends(get_user_from_headers),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
+    logger.debug(f"[AVATAR] Request headers: {dict(request.headers)}")
     user_id = str(user.id)
     logger.info(f"[AVATAR] Upload initiated for user {user_id}")
+
+    if not user_id or user_id == "00000000-0000-0000-0000-000000000000":
+        logger.error(f"[AVATAR] Invalid user_id={user_id}")
+        raise HTTPException(401, detail="Invalid or missing user authentication")
 
     if file.content_type not in ALLOWED_IMAGE_MIME:
         logger.warning(f"[AVATAR] Unsupported content type: {file.content_type}")
@@ -82,7 +88,6 @@ async def upload_avatar(
     save_path = avatar_dir / avatar_filename
     thumb_path = avatar_dir / thumb_filename
 
-    # Clean up old files
     for f in avatar_dir.glob("avatar*"):
         try:
             f.unlink()
@@ -93,7 +98,6 @@ async def upload_avatar(
     tmp_input = avatar_dir / f"input{ext}"
     tmp_input.write_bytes(contents)
 
-    # Blender → GPU if available → else CPU
     try:
         use_gpu = False
         try:
@@ -130,7 +134,6 @@ async def upload_avatar(
             logger.error(f"[AVATAR] Failed to process image: {e}")
             raise HTTPException(500, detail="Failed to process avatar image") from e
 
-    # Update user record
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -150,25 +153,4 @@ async def upload_avatar(
         avatar_url=f"{settings.base_url}{user.avatar_url}?t={ts}",
         thumbnail_url=f"{settings.base_url}/uploads/users/{user_id}/avatars/{thumb_filename}?t={ts}",
         uploaded_at=user.avatar_updated_at,
-    )
-
-
-@router.get("/{user_id}")
-async def get_avatar_url(user_id: str, db: AsyncSession = Depends(get_async_db)):
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user or not user.avatar_url:
-        logger.warning(f"[AVATAR] Avatar not found for user {user_id}")
-        raise HTTPException(404, detail="Avatar not found")
-
-    ts = int(user.avatar_updated_at.timestamp()) if user.avatar_updated_at else 0
-    thumb_url = user.avatar_url.replace(".", "_thumb.")
-
-    logger.info(f"[AVATAR] Retrieved avatar URLs for user {user_id}")
-
-    return JSONResponse(
-        {
-            "avatar_url": f"{settings.base_url}{user.avatar_url}?t={ts}",
-            "thumbnail_url": f"{settings.base_url}{thumb_url}?t={ts}",
-        }
     )

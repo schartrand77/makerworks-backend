@@ -7,12 +7,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ─── Database Engine ────────────────────────────────
-DATABASE_URL = settings.async_database_url
+DATABASE_URL = settings.database_url
 
 engine = create_async_engine(
     DATABASE_URL,
     echo=settings.env == "development",
-    future=True,
 )
 
 # ─── Session Factory ────────────────────────────────

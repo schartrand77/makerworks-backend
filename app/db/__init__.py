@@ -1,8 +1,7 @@
-from app.db.base import Base
-
 from .database import (
-    async_session,
     engine,
-    get_async_db,
+    async_session_maker,
+    Base,
     init_db,
+    get_async_db,
 )

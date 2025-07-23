@@ -27,8 +27,7 @@ DOMAIN = settings.domain
 WEBHOOK_SECRET = settings.stripe_webhook_secret
 
 if not stripe.api_key:
-    raise RuntimeError("❌ Missing STRIPE_SECRET_KEY")
-
+    logger.warning("⚠️ STRIPE_SECRET_KEY is not set. Checkout endpoints will return 503.")
 
 # ───────────────────────────────────────────────
 # Pydantic Request Model
@@ -37,7 +36,6 @@ class CheckoutRequest(BaseModel):
     model_id: int = Field(..., description="Uploaded model ID")
     estimate_id: int = Field(..., description="Associated estimate ID")
     total_cost: float = Field(..., description="Final total cost in USD")
-
 
 # ───────────────────────────────────────────────
 # Create Stripe Checkout Session
@@ -50,6 +48,9 @@ def create_checkout_session(
     """
     Create a Stripe Checkout session for the specified model & estimate.
     """
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Stripe is not configured")
+
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -82,7 +83,6 @@ def create_checkout_session(
         logger.error("❌ Stripe session error: %s", e)
         raise HTTPException(status_code=500, detail=f"Stripe error: {e!s}") from e
 
-
 # ───────────────────────────────────────────────
 # Stripe Webhook Handler
 # ───────────────────────────────────────────────
@@ -91,12 +91,16 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_async_
     """
     Handle Stripe webhook events to mark payments complete & trigger G-code task.
     """
+    if not WEBHOOK_SECRET:
+        logger.warning("⚠️ STRIPE_WEBHOOK_SECRET is not set")
+        raise HTTPException(status_code=503, detail="Stripe is not configured")
+
     payload = await request.body()
     sig = request.headers.get("stripe-signature")
 
-    if not sig or not WEBHOOK_SECRET:
-        logger.warning("⚠️ Missing Stripe signature or webhook secret")
-        raise HTTPException(status_code=400, detail="Missing webhook signature or secret")
+    if not sig:
+        logger.warning("⚠️ Missing Stripe signature header")
+        raise HTTPException(status_code=400, detail="Missing Stripe signature")
 
     try:
         event = stripe.Webhook.construct_event(payload, sig, WEBHOOK_SECRET)

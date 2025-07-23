@@ -1,18 +1,11 @@
 from .auth import (
-    admin_required,
-    get_current_admin_user,
     get_current_user,
-    get_user_from_token_query,
+    admin_required,
 )
-from .db import get_async_db
-
-get_current_admin = get_current_admin_user
+from app.db.database import get_async_db
 
 __all__ = [
-    "admin_required",
-    "get_current_admin",  # Include alias
-    "get_current_admin_user",
     "get_current_user",
-    "get_user_from_token_query",
+    "admin_required",
     "get_async_db",
 ]

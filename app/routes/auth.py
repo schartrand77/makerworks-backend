@@ -1,76 +1,60 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from redis.asyncio import Redis
 
 from app.db.session import get_async_db
 from app.models.models import User
 from app.schemas.auth import SignupRequest, SigninRequest, AuthPayload, UserOut
-from app.services.token_service import create_access_token, decode_token
 from app.utils.security import hash_password, verify_password
 from app.utils.users import create_user_dirs
+from app.services.redis_service import get_redis
+from app.config.settings import settings
+
+import json
+
+SESSION_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
 router = APIRouter()
 
 
-def get_guest_user() -> UserOut:
-    """
-    Return a fully populated guest user.
-    """
-    now = datetime.utcnow()
-    return UserOut(
-        id="00000000-0000-0000-0000-000000000000",
-        username="guest",
-        email="guest@example.com",
-        name="Guest User",
-        bio="Guest user - limited access.",
-        role="guest",
-        is_verified=False,
-        created_at=now,
-        last_login=None,
-        avatar_url="/static/images/guest-avatar.png",
-        thumbnail_url="/static/images/guest-thumbnail.png",
-        avatar_updated_at=now,
-        language="en",
-    )
-
-
 async def get_current_user(
     authorization: str = Header(default=None),
-    db: AsyncSession = Depends(get_async_db),
+    redis: Redis = Depends(get_redis),
 ) -> UserOut:
     """
-    Tries to fetch the current authenticated user.
-    If token is missing/invalid → returns guest user.
+    Fetch user session from Redis.
+    If session token is missing/invalid → raise 401.
     """
     if not authorization or not authorization.startswith("Bearer "):
-        return get_guest_user()
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    token = authorization.split(" ")[1]
+    session_token = authorization.split(" ")[1]
     try:
-        payload = decode_token(token)
+        session_data = await redis.get(session_token)
+    except Exception as e:
+        print(f"[AUTH] Redis unavailable in /me → {e}")
+        raise HTTPException(status_code=503, detail="Redis session unavailable")
+
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+
+    try:
+        user_dict = json.loads(session_data)
+        return UserOut(**user_dict)
     except Exception:
-        return get_guest_user()
-
-    user_id = payload.get("sub")
-    if not user_id:
-        return get_guest_user()
-
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        return get_guest_user()
-
-    return UserOut.model_validate(user, from_attributes=True)
+        raise HTTPException(status_code=401, detail="Invalid session data")
 
 
 @router.post("/signup", response_model=AuthPayload)
-async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_async_db)):
-    """
-    Create a new user account.
-    """
+async def signup(
+    payload: SignupRequest,
+    db: AsyncSession = Depends(get_async_db),
+    redis: Redis = Depends(get_redis),
+):
     result = await db.execute(select(User).where(User.email == payload.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -94,15 +78,28 @@ async def signup(payload: SignupRequest, db: AsyncSession = Depends(get_async_db
     await db.refresh(user)
     create_user_dirs(str(user.id))
 
-    token = create_access_token(user_id=str(user.id), email=user.email)
-    return AuthPayload(user=UserOut.model_validate(user, from_attributes=True), token=token)
+    session_token = str(uuid4())
+    user_out = UserOut.model_validate(user, from_attributes=True)
+
+    try:
+        await redis.set(
+            session_token,
+            user_out.model_dump_json(),
+            ex=SESSION_TTL_SECONDS
+        )
+    except Exception as e:
+        print(f"[AUTH] Redis unavailable during signup: {e}")
+        session_token = None  # indicate no session issued
+
+    return AuthPayload(user=user_out, token=session_token)
 
 
 @router.post("/signin", response_model=AuthPayload)
-async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_async_db)):
-    """
-    Authenticate an existing user.
-    """
+async def signin(
+    payload: SigninRequest,
+    db: AsyncSession = Depends(get_async_db),
+    redis: Redis = Depends(get_redis),
+):
     stmt = select(User).where(
         (User.email == payload.email_or_username)
         | (User.username == payload.email_or_username)
@@ -120,32 +117,44 @@ async def signin(payload: SigninRequest, db: AsyncSession = Depends(get_async_db
     user.last_login = datetime.utcnow()
     await db.commit()
 
-    token = create_access_token(user_id=str(user.id), email=user.email)
-    return AuthPayload(user=UserOut.model_validate(user, from_attributes=True), token=token)
+    session_token = str(uuid4())
+    user_out = UserOut.model_validate(user, from_attributes=True)
+
+    try:
+        await redis.set(
+            session_token,
+            user_out.model_dump_json(),
+            ex=SESSION_TTL_SECONDS
+        )
+    except Exception as e:
+        print(f"[AUTH] Redis unavailable during signin: {e}")
+        session_token = None
+
+    return AuthPayload(user=user_out, token=session_token)
 
 
 @router.post("/signout")
-async def signout(authorization: str = Header(default=None)):
-    """
-    Sign out user (currently no-op, but client should discard token).
-    """
-    if authorization and not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+async def signout(
+    authorization: str = Header(default=None),
+    redis: Redis = Depends(get_redis),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        return {"status": "ok"}
+
+    session_token = authorization.split(" ")[1]
+    try:
+        await redis.delete(session_token)
+    except Exception as e:
+        print(f"[AUTH] Redis unavailable during signout: {e}")
+
     return {"status": "ok"}
 
 
 @router.get("/me", response_model=UserOut)
 async def me(user: UserOut = Depends(get_current_user)):
-    """
-    Get current authenticated user or guest if not authenticated.
-    Returns a plain UserOut object for frontend.
-    """
     return user
 
 
 @router.get("/debug")
 async def debug_route():
-    """
-    Debug route for development.
-    """
     return {"token": "debug-token"}
