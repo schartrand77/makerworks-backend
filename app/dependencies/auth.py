@@ -1,15 +1,17 @@
 import logging
 from datetime import datetime
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.database import get_async_db
+from app.db.database import get_async_db, async_session
 from app.models.models import User
 from app.schemas.user import UserOut
 from app.services.token_service import decode_token
+from app.services.redis_service import get_redis
+from app.services.token_blacklist import is_token_blacklisted
 
 logger = logging.getLogger(__name__)
 
@@ -144,3 +146,29 @@ async def assert_user_is_admin(user: User = Depends(get_current_user)) -> None:
     """
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
+async def get_user_from_token_query(websocket: WebSocket) -> User | None:
+    """Return User from JWT passed as 'token' query param."""
+    token = websocket.query_params.get("token")
+    if not token:
+        return None
+
+    try:
+        payload = decode_token(token)
+    except Exception:
+        logger.warning("[AUTH] Invalid token in websocket query")
+        return None
+
+    user_id = payload.get("sub")
+    jti = payload.get("jti")
+    if not user_id:
+        logger.warning("[AUTH] Token missing 'sub'")
+        return None
+
+    redis = await get_redis()
+    if jti and await is_token_blacklisted(redis, jti):
+        logger.warning("[AUTH] Token is blacklisted")
+        return None
+
+    async with async_session() as db:
+        user = await resolve_user(user_id, db)
+    return user
