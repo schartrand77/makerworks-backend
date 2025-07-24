@@ -21,7 +21,11 @@ def main(model_path: str, output_dir: str):
     if ext == ".stl":
         bpy.ops.import_mesh.stl(filepath=str(model_path))
     elif ext == ".3mf":
-        bpy.ops.import_mesh.stl(filepath=str(model_path))  # fallback
+        # Blender's default distribution lacks a native 3MF importer.  When
+        # a 3MF import add-on is installed it typically exposes an X3D style
+        # operator.  Use that operator so the pipeline can handle .3mf files
+        # if the add-on is available.
+        bpy.ops.import_scene.x3d(filepath=str(model_path))
     else:
         print(json.dumps({"error": "Unsupported format"}))
         sys.exit(1)

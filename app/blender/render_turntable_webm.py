@@ -17,7 +17,11 @@ if ext == ".stl":
 elif ext == ".obj":
     bpy.ops.import_scene.obj(filepath=model_path)
 elif ext == ".3mf":
-    bpy.ops.import_mesh.3mf(filepath=model_path)
+    # Blender does not ship with a native 3MF importer. 3MF files can be
+    # imported via an external add-on which exposes an X3D style operator.
+    # Use the X3D importer when a 3MF file is provided so the script runs even
+    # when that add-on is installed.
+    bpy.ops.import_scene.x3d(filepath=model_path)
 else:
     print(f"Unsupported format: {ext}")
     sys.exit(1)
