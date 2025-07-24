@@ -20,7 +20,25 @@ class FilamentCreate(BaseModel):
     is_active: Optional[bool] = True
     is_biodegradable: Optional[bool] = None
 
-    model_config = {"populate_by_name": True}
+    model_config = {
+        "populate_by_name": True,
+        "json_schema_extra": {
+            "examples": [{
+                "name": "Matte Ice Blue",
+                "category": "PLA",
+                "type": "Matte",
+                "subtype": "Special Edition",
+                "surface_texture": "Matte",
+                "description": "Cool icy matte blue finish",
+                "colorHex": "#A3D8F4",
+                "colorName": "Ice Blue",
+                "pricePerKg": 25.99,
+                "currency": "USD",
+                "is_active": True,
+                "is_biodegradable": True
+            }]
+        }
+    }
 
 
 class FilamentUpdate(BaseModel):
@@ -40,11 +58,22 @@ class FilamentUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_biodegradable: Optional[bool] = None
 
-    model_config = {"populate_by_name": True}
+    model_config = {
+        "populate_by_name": True,
+        "json_schema_extra": {
+            "examples": [{
+                "pricePerKg": 28.99,
+                "colorHex": "#FF0000",
+                "colorName": "Scarlet Red",
+                "is_active": False
+            }]
+        }
+    }
 
 
 class FilamentOut(BaseModel):
     id: str
+    name: str
     category: str
     type: str
     subtype: Optional[str] = None
