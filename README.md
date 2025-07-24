@@ -29,6 +29,15 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
+## CLI
+
+The `mw` command provides helper utilities such as database setup and running
+Alembic migrations. See [CLI.md](CLI.md) for the full manual. Example:
+
+```bash
+mw update alembic head
+```
+
 ## Monitoring
 
 Prometheus metrics are exposed at `/metrics` and secured with `METRICS_API_KEY`.
