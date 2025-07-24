@@ -28,7 +28,7 @@ logger.info(f"✅ Async SQLAlchemy engine initialized: {DATABASE_URL}")
 
 
 # ─── Dependency for FastAPI ─────────────────────────
-async def get_async_db() -> AsyncSession:
+async def get_async_session() -> AsyncSession:
     """
     Yield an async database session to the request.
     """
@@ -36,5 +36,6 @@ async def get_async_db() -> AsyncSession:
         yield session
 
 
-# Alias for backwards compatibility
-get_db = get_async_db
+# Optional aliases
+get_async_db = get_async_session
+get_db = get_async_session

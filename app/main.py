@@ -112,7 +112,6 @@ else:
 
 mount(models.router, "/api/v1/models", ["models"])
 mount(metrics.router, "/metrics", ["metrics"])
-# 🔷 Discord route removed here.
 
 # ─── Mount Static Files ─────────────────────
 uploads_path = settings.uploads_path

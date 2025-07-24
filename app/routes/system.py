@@ -1,15 +1,16 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, Depends
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
+
+from app.db.session import get_async_session
 
 router = APIRouter()
 
 
 @router.get("/status", tags=["system"], status_code=status.HTTP_200_OK)
 async def system_status():
-    """
-    System status overview endpoint.
-    """
     return JSONResponse(
         {
             "status": "ok",
@@ -21,9 +22,6 @@ async def system_status():
 
 @router.get("/version", tags=["system"], status_code=status.HTTP_200_OK)
 async def system_version():
-    """
-    Return the current application version.
-    """
     return JSONResponse(
         {
             "version": "1.0.0",
@@ -34,10 +32,6 @@ async def system_version():
 
 @router.get("/env", tags=["system"], status_code=status.HTTP_200_OK)
 async def system_env():
-    """
-    Return environment variables snapshot (safe subset).
-    """
-    # Customize these as needed
     return JSONResponse(
         {
             "env": "development",
@@ -48,9 +42,6 @@ async def system_env():
 
 @router.get("/ping", tags=["system"], status_code=status.HTTP_200_OK)
 async def system_ping():
-    """
-    Health check endpoint at /api/v1/system/ping
-    """
     return JSONResponse(
         {
             "status": "ok",
@@ -60,12 +51,28 @@ async def system_ping():
     )
 
 
-@router.post("/handshake", tags=["system"], status_code=status.HTTP_200_OK)
+@router.get("/tables", tags=["system"], status_code=status.HTTP_200_OK)
+async def list_tables(session: AsyncSession = Depends(get_async_session)):
+    query = text("""
+        SELECT schemaname, tablename, tableowner
+        FROM pg_tables
+        WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY schemaname, tablename;
+    """)
+    result = await session.execute(query)
+    rows = result.fetchall()
+    return [
+        {
+            "schema": row[0],
+            "table": row[1],
+            "owner": row[2]
+        } for row in rows
+    ]
+
+
 @router.get("/handshake", tags=["system"], status_code=status.HTTP_200_OK)
+@router.post("/handshake", tags=["system"], status_code=status.HTTP_200_OK)
 async def system_handshake():
-    """
-    Handshake endpoint at /api/v1/system/handshake
-    """
     return JSONResponse(
         {
             "status": "ok",
