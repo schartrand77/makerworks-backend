@@ -1,18 +1,30 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
-from app.utils.boot_messages import random_boot_message
-from app.utils.system_info import get_system_status_snapshot
 from app.config.settings import settings
 from app.db.database import init_db
-from app.startup.admin_seed import ensure_admin_user
+from app.routes import (
+    admin,
+    auth,
+    avatar,
+    cart,
+    checkout,
+    filaments,
+    models,
+    system,
+    upload,
+    users,
+)
 from app.services.redis_service import verify_redis_connection
-
-import logging
-from contextlib import asynccontextmanager
+from app.startup.admin_seed import ensure_admin_user
+from app.utils.boot_messages import random_boot_message
+from app.utils.system_info import get_system_status_snapshot
 
 logger = logging.getLogger("uvicorn")
 
@@ -47,15 +59,11 @@ async def lifespan(app: FastAPI):
 
     await verify_redis_connection()
     await init_db()
+    await ensure_admin_user()
 
     yield
 
 app.router.lifespan_context = lifespan
-
-# ─── Startup Admin Seed ─────────────────────
-@app.on_event("startup")
-async def startup_event():
-    await ensure_admin_user()
 
 # ─── Debug CORS Middleware ──────────────────
 @app.middleware("http")
@@ -86,18 +94,6 @@ def mount(router, prefix: str, tags: list[str]):
     logger.info(f"🔌 Mounted: {prefix or '/'} — Tags: {', '.join(tags)}")
 
 # ─── Mount All Routes ───────────────────────
-from app.routes import (
-    admin,
-    auth,
-    avatar,
-    cart,
-    checkout,
-    filaments,
-    system,
-    upload,
-    users,
-    models,
-)
 
 mount(auth.router, "/api/v1/auth", ["auth"])
 mount(users.router, "/api/v1/users", ["users"])
