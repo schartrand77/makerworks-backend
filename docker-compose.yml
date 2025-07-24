@@ -59,6 +59,32 @@ services:
       - BASE_URL=http://localhost:8000
     platform: linux/arm64
 
+  prometheus:
+    image: prom/prometheus
+    container_name: makerworks_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana
+    container_name: makerworks_grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+
 volumes:
   postgres_data:
   redis_data:
+  grafana_data:

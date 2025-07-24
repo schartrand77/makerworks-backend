@@ -17,6 +17,7 @@ from app.routes import (
     checkout,
     filaments,
     models,
+    metrics,
     system,
     upload,
     users,
@@ -110,6 +111,7 @@ else:
     logger.warning("⚠️ STRIPE_SECRET_KEY is not set. Checkout routes not mounted.")
 
 mount(models.router, "/api/v1/models", ["models"])
+mount(metrics.router, "/metrics", ["metrics"])
 # 🔷 Discord route removed here.
 
 # ─── Mount Static Files ─────────────────────
