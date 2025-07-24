@@ -14,7 +14,7 @@ from app.models.models import (
     AuditLog,
     FilamentPricing,
     UploadJob,
-    # CheckoutSession,  # Uncomment once implemented
+    CheckoutSession,
 )
 
 # Explicitly reference Base's metadata so Alembic can autogenerate migrations

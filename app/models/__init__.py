@@ -10,6 +10,7 @@ from app.models.models import (
     ModelMetadata,
     AuditLog,
     FilamentPricing,
+    CheckoutSession,
 )
 
 Model3D = ModelMetadata

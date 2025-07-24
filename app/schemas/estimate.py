@@ -1,7 +1,7 @@
 # app/schemas/estimate.py
 
-
 from pydantic import BaseModel, Field
+from app.schemas.enums import CurrencyEnum
 
 
 class EstimateRequest(BaseModel):
@@ -29,8 +29,11 @@ class EstimateResponse(BaseModel):
     estimated_time_minutes: float = Field(
         ..., example=85.4, description="Estimated total print time in minutes"
     )
-    estimated_cost_usd: float = Field(
-        ..., example=6.75, description="Estimated total print cost in USD"
+    estimated_cost: float = Field(
+        ..., example=6.75, description="Estimated total print cost"
+    )
+    currency: CurrencyEnum = Field(
+        default=CurrencyEnum.USD, description=CurrencyEnum.openapi_schema()["description"]
     )
 
     model_config = {"from_attributes": True}

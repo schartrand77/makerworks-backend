@@ -37,6 +37,17 @@ services:
       retries: 5
     platform: linux/arm64
 
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: makerworks_redis_exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    command:
+      - '--redis.addr=redis://makerworks_redis:6379'
+    depends_on:
+      - redis
+
   backend:
     build:
       context: .
@@ -69,6 +80,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     depends_on:
       - backend
+      - redis_exporter
 
   grafana:
     image: grafana/grafana
@@ -83,6 +95,19 @@ services:
       - prometheus
     volumes:
       - grafana_data:/var/lib/grafana
+
+  flower:
+    image: mher/flower
+    container_name: makerworks_flower
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    command: >
+      flower --port=5555 --broker=redis://redis:6379/0
 
 volumes:
   postgres_data:

@@ -12,7 +12,7 @@ from app.models.models import User
 from app.schemas.auth import SignupRequest, SigninRequest, AuthPayload, UserOut
 from app.utils.security import hash_password, verify_password
 from app.utils.users import create_user_dirs
-from app.services.redis_service import get_redis
+from app.services.cache.redis_service import get_redis
 from app.config.settings import settings
 
 SESSION_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days

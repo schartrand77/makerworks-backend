@@ -44,6 +44,7 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
     estimates = relationship("Estimate", back_populates="user", cascade="all, delete-orphan")
     upload_jobs = relationship("UploadJob", back_populates="user", cascade="all, delete-orphan")
+    checkout_sessions = relationship("CheckoutSession", back_populates="user", cascade="all, delete-orphan")
 
 
 class Estimate(Base):
@@ -157,3 +158,15 @@ class UploadJob(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="upload_jobs")
+
+
+class CheckoutSession(Base):
+    __tablename__ = "checkout_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed = Column(Boolean, default=False)
+    total_cost = Column(Float, default=0.0)
+
+    user = relationship("User", back_populates="checkout_sessions")

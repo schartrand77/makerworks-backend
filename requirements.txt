@@ -64,3 +64,7 @@ numpy==2.3.1
 trimesh==4.7.1
 pyglet==2.1.6
 PyOpenGL==3.1.9
+
+# Monitoring and Task UI
+flower==1.2.0
+prometheus_client==0.22.1

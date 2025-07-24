@@ -22,7 +22,7 @@ from app.routes import (
     upload,
     users,
 )
-from app.services.redis_service import verify_redis_connection
+from app.services.cache.redis_service import verify_redis_connection
 from app.startup.admin_seed import ensure_admin_user
 from app.utils.boot_messages import random_boot_message
 from app.utils.system_info import get_system_status_snapshot

@@ -10,9 +10,14 @@ from app.dependencies.auth import get_current_user
 from app.models import User, Favorite, ModelMetadata
 from app.schemas.user import UpdateUserProfile, UserOut
 from app.schemas.models import ModelOut
-
+from app.services.cache.user_cache import (
+    cache_user_by_id,
+    cache_user_by_username,
+    get_user_by_id,
+    get_user_by_username,
+    delete_user_cache,
+)
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 # ─────────────────────────────────────────────────────────────
@@ -37,8 +42,11 @@ async def update_profile(
     current_user.bio = payload.bio
     await db.commit()
     await db.refresh(current_user)
-    return UserOut.model_validate(current_user)
 
+    # Cache updated user profile in Redis
+    await cache_user_by_id(current_user)
+
+    return UserOut.model_validate(current_user)
 
 # ─────────────────────────────────────────────────────────────
 # GET /users/me
@@ -55,8 +63,14 @@ async def get_me(current_user: User = Depends(get_current_user)):
     Returns current user info from the database.
     """
     logger.info("🔷 Fetching current user: %s", current_user.id)
-    return UserOut.model_validate(current_user)
 
+    # Check Redis cache first
+    cached = await get_user_by_id(str(current_user.id))
+    if cached:
+        logger.debug("⚡ Using cached user profile for %s", current_user.id)
+        return cached
+
+    return UserOut.model_validate(current_user)
 
 # ─────────────────────────────────────────────────────────────
 # GET /users/username/check
@@ -78,7 +92,6 @@ async def check_username(username: str, db: AsyncSession = Depends(get_async_db)
         "available": user is None,
         "note": "Username is available" if user is None else "Username is already taken",
     }
-
 
 # ─────────────────────────────────────────────────────────────
 # GET /users (admin-only)
@@ -104,7 +117,6 @@ async def get_all_users(
     result = await db.execute(select(User))
     users = result.scalars().all()
     return [UserOut.model_validate(u) for u in users]
-
 
 # ─────────────────────────────────────────────────────────────
 # GET /users/{user_id}/favorites

@@ -11,7 +11,6 @@ from pydantic import BaseModel, EmailStr, Field, HttpUrl, constr
 # Core User Base Schema
 # ───────────────────────────────────────────────
 
-
 class UserBase(BaseModel):
     email: EmailStr = Field(..., example="user@example.com")
     username: constr(min_length=3, max_length=32) = Field(
@@ -24,7 +23,6 @@ class UserBase(BaseModel):
 # ───────────────────────────────────────────────
 # Output Schemas
 # ───────────────────────────────────────────────
-
 
 class UserOut(UserBase):
     id: UUID = Field(..., example="f47ac10b-58cc-4372-a567-0e02b2c3d479")
@@ -63,7 +61,6 @@ class PublicUserOut(BaseModel):
 # Update Schemas
 # ───────────────────────────────────────────────
 
-
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
     username: constr(min_length=3, max_length=32) | None = None  # type: ignore[valid-type]
@@ -93,7 +90,6 @@ class RoleUpdate(BaseModel):
 # ───────────────────────────────────────────────
 # Utility Schemas
 # ───────────────────────────────────────────────
-
 
 class AvatarUpdate(BaseModel):
     avatar_url: HttpUrl | None = Field(
@@ -125,7 +121,6 @@ class UsernameAvailability(BaseModel):
 # ───────────────────────────────────────────────
 # Admin Utility Schemas
 # ───────────────────────────────────────────────
-
 
 class UserAdminAction(str, Enum):
     promote = "promote"
