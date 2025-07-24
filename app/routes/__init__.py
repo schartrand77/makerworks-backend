@@ -19,6 +19,7 @@ from .models import router as models_router
 from .system import router as system_router
 from .upload import router as upload_router
 from .users import router as users_router
+from .metrics import router as metrics_router
 
 # Central API router
 router = APIRouter()
@@ -35,3 +36,4 @@ router.include_router(models_router, prefix="/models", tags=["models"])
 router.include_router(system_router, prefix="/system", tags=["system"])
 router.include_router(upload_router, prefix="/upload", tags=["upload"])
 router.include_router(users_router, prefix="/users", tags=["users"])
+router.include_router(metrics_router, prefix="/metrics", tags=["metrics"])

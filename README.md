@@ -9,6 +9,7 @@ This is the FastAPI + Celery + PostgreSQL backend powering the MakerWorks 3D pri
 - 🎯 Redis queue + Celery for background jobs
 - 📁 PostgreSQL via SQLAlchemy
 - 🖼️ Avatar uploads via `/api/v1/users/avatar`
+- 📈 Prometheus metrics & Grafana dashboards
 
 The repository ships with a `.env.example` file containing all the
 environment variables required to run the application. Copy it to `.env`
@@ -26,6 +27,16 @@ cp .env.example .env
 # `.env.example` lists all required environment variables
 alembic upgrade head
 uvicorn app.main:app --reload
+```
+
+## Monitoring
+
+Prometheus metrics are exposed at `/metrics` and secured with `METRICS_API_KEY`.
+Grafana and Prometheus services are provided via `docker-compose`. Start them
+with:
+
+```bash
+docker-compose up prometheus grafana
 ```
 
 ## License
