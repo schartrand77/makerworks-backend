@@ -1,3 +1,16 @@
+"""Filesystem utilities used across the project."""
+
+from pathlib import Path
+import uuid
+import logging
+
+from app.config.settings import settings
+
+UPLOADS_ROOT = settings.uploads_path
+
+logger = logging.getLogger(__name__)
+
+
 def create_user_folders(user_id: uuid.UUID) -> dict[str, bool]:
     """
     Create avatar and models folders for the given user ID.
