@@ -1,3 +1,4 @@
+import os
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from app.config.settings import settings
@@ -7,7 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ─── Database Engine ────────────────────────────────
-DATABASE_URL = settings.database_url
+DATABASE_URL = os.getenv("ASYNC_DATABASE_URL", settings.database_url)
 
 engine = create_async_engine(
     DATABASE_URL,
@@ -36,4 +37,4 @@ async def get_async_db() -> AsyncSession:
 
 
 # Alias for backwards compatibility
-get_async_db = get_async_db
+get_db = get_async_db
