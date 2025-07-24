@@ -8,12 +8,9 @@ from sqlalchemy import (
     UniqueConstraint, Integer
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship, DeclarativeBase
+from sqlalchemy.orm import relationship
 
-
-class Base(DeclarativeBase):
-    """Declarative base class for all models."""
-    pass
+from app.db.base_class import Base  # ✅ Correct base class
 
 
 class User(Base):
@@ -23,41 +20,42 @@ class User(Base):
         UniqueConstraint("username", name="uq_user_username"),
     )
 
-    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    email: str = Column(String, nullable=False, unique=True)
-    username: str = Column(String, nullable=False, unique=True)
-    hashed_password: str | None = Column(String(128), nullable=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    email = Column(String, nullable=False, unique=True)
+    username = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=True)
+    hashed_password = Column(String(128), nullable=True)
 
-    avatar: str | None = Column(String, nullable=True)
-    avatar_url: str | None = Column(String, nullable=True)
-    avatar_updated_at: datetime | None = Column(DateTime, nullable=True)
-    bio: str | None = Column(Text, nullable=True)
-    language: str = Column(String, default="en")
-    theme: str = Column(String, default="system")
+    avatar = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+    avatar_updated_at = Column(DateTime, nullable=True)
+    bio = Column(Text, nullable=True)
+    language = Column(String, default="en")
+    theme = Column(String, default="system")
 
-    role: str = Column(String, default="user")
-    is_verified: bool = Column(Boolean, default=True)
-    is_active: bool = Column(Boolean, default=True)
-    created_at: datetime = Column(DateTime, default=datetime.utcnow)
-    last_login: datetime | None = Column(DateTime)
+    role = Column(String, default="user")
+    is_verified = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
 
-    # Relationships
     models = relationship("ModelMetadata", back_populates="user", cascade="all, delete-orphan")
     favorites = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
     estimates = relationship("Estimate", back_populates="user", cascade="all, delete-orphan")
+    upload_jobs = relationship("UploadJob", back_populates="user", cascade="all, delete-orphan")
 
 
 class Estimate(Base):
     __tablename__ = "estimates"
 
-    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id: UUID = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    model_name: str = Column(String, nullable=False)
-    estimated_time: float = Column(Float, nullable=False)
-    estimated_cost: float = Column(Float, nullable=False)
-    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+    model_name = Column(String, nullable=False)
+    estimated_time = Column(Float, nullable=False)
+    estimated_cost = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="estimates")
 
@@ -65,19 +63,19 @@ class Estimate(Base):
 class EstimateSettings(Base):
     __tablename__ = "estimate_settings"
 
-    id: str = Column(String, primary_key=True)
-    custom_text_base_cost: float = Column(Float, default=2.0, nullable=False)
-    custom_text_cost_per_char: float = Column(Float, default=0.1, nullable=False)
-    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+    id = Column(String, primary_key=True)
+    custom_text_base_cost = Column(Float, default=2.0, nullable=False)
+    custom_text_cost_per_char = Column(Float, default=0.1, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Favorite(Base):
     __tablename__ = "favorites"
 
-    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id: UUID = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    model_id: UUID = Column(UUID(as_uuid=True), ForeignKey("models.id", ondelete="CASCADE"), nullable=False)
-    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    model_id = Column(UUID(as_uuid=True), ForeignKey("models.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="favorites")
     model = relationship("ModelMetadata", back_populates="favorites")
@@ -86,41 +84,41 @@ class Favorite(Base):
 class Filament(Base):
     __tablename__ = "filaments"
 
-    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    category: str = Column(String, nullable=False)
-    type: str = Column(String, nullable=False)
-    color_name: str = Column(String, nullable=False)
-    color_hex: str = Column(String(7), nullable=False)
-    price_per_kg: float = Column(Float, nullable=False)
-    surface_texture: str | None = Column(String, nullable=True)
-    is_biodegradable: bool = Column(Boolean, default=False)
-    is_active: bool = Column(Boolean, default=True)
-    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    category = Column(String, nullable=False)
+    type = Column(String, nullable=False)
+    color_name = Column(String, nullable=False)
+    color_hex = Column(String(7), nullable=False)
+    price_per_kg = Column(Float, nullable=False)
+    surface_texture = Column(String, nullable=True)
+    is_biodegradable = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class ModelMetadata(Base):
     __tablename__ = "models"
 
-    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id: UUID = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    name: str = Column(String, nullable=False)
-    description: str | None = Column(Text, nullable=True)
-    filename: str = Column(String, nullable=False)
-    filepath: str = Column(String, nullable=False)
-    file_url: str = Column(String, nullable=False)
-    thumbnail_url: str | None = Column(String, nullable=True)
-    webm_url: str | None = Column(String, nullable=True)
-    glb_path: str | None = Column(String, nullable=True)   # ← NEW: .glb file path
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    filename = Column(String, nullable=False)
+    filepath = Column(String, nullable=False)
+    file_url = Column(String, nullable=False)
+    thumbnail_url = Column(String, nullable=True)
+    webm_url = Column(String, nullable=True)
+    glb_path = Column(String, nullable=True)
 
-    geometry_hash: str | None = Column(String, nullable=True, index=True)
-    is_duplicate: bool = Column(Boolean, default=False)
-    uploaded_at: datetime = Column(DateTime, default=datetime.utcnow)
+    geometry_hash = Column(String, nullable=True, index=True)
+    is_duplicate = Column(Boolean, default=False)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
 
-    volume: float | None = Column(Float, nullable=True)
-    bbox: dict | None = Column(JSONB, nullable=True)
-    faces: int | None = Column(Integer, nullable=True)
-    vertices: int | None = Column(Integer, nullable=True)
+    volume = Column(Float, nullable=True)
+    bbox = Column(JSONB, nullable=True)
+    faces = Column(Integer, nullable=True)
+    vertices = Column(Integer, nullable=True)
 
     user = relationship("User", back_populates="models")
     favorites = relationship("Favorite", back_populates="model", cascade="all, delete-orphan")
@@ -129,13 +127,13 @@ class ModelMetadata(Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id: UUID = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    action: str = Column(String, nullable=False)
-    target: str | None = Column(String, nullable=True)
-    description: str | None = Column(Text, nullable=True)
-    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+    action = Column(String, nullable=False)
+    target = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="audit_logs")
 
@@ -143,7 +141,19 @@ class AuditLog(Base):
 class FilamentPricing(Base):
     __tablename__ = "filament_pricing"
 
-    id: str = Column(String, primary_key=True)
-    filament_id: UUID = Column(UUID(as_uuid=True), ForeignKey("filaments.id", ondelete="CASCADE"), nullable=False)
-    price_per_gram: float = Column(Float, nullable=False)
-    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+    id = Column(String, primary_key=True)
+    filament_id = Column(UUID(as_uuid=True), ForeignKey("filaments.id", ondelete="CASCADE"), nullable=False)
+    price_per_gram = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UploadJob(Base):
+    __tablename__ = "upload_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    filename = Column(String, nullable=False)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="upload_jobs")

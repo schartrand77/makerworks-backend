@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from uuid import uuid4
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,11 +15,27 @@ from app.utils.users import create_user_dirs
 from app.services.redis_service import get_redis
 from app.config.settings import settings
 
-import json
-
 SESSION_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
 router = APIRouter()
+
+
+def with_avatar_fields(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        username=user.username,
+        name=user.name,
+        bio=user.bio,
+        role=user.role,
+        is_verified=user.is_verified,
+        created_at=user.created_at,
+        last_login=user.last_login,
+        avatar_url=f"/avatars/{user.id}.png",
+        thumbnail_url=f"/avatars/thumbnails/{user.id}.jpg",
+        avatar_updated_at=user.avatar_updated_at,
+        language=user.language,
+    )
 
 
 async def get_current_user(
@@ -79,7 +96,7 @@ async def signup(
     create_user_dirs(str(user.id))
 
     session_token = str(uuid4())
-    user_out = UserOut.model_validate(user, from_attributes=True)
+    user_out = with_avatar_fields(user)
 
     try:
         await redis.set(
@@ -118,7 +135,7 @@ async def signin(
     await db.commit()
 
     session_token = str(uuid4())
-    user_out = UserOut.model_validate(user, from_attributes=True)
+    user_out = with_avatar_fields(user)
 
     try:
         await redis.set(
