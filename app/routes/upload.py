@@ -18,7 +18,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
-BASE_UPLOAD_DIR: Path = Path(settings.upload_dir)
+BASE_UPLOAD_DIR: Path = Path(settings.uploads_path).resolve()
 
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 

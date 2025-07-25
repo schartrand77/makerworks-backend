@@ -1,11 +1,14 @@
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.config.settings import settings
 from app.db.database import init_db
@@ -34,6 +37,15 @@ app = FastAPI(
     title="MakerWorks API",
     version="1.0.0",
     description="MakerWorks backend API",
+)
+
+# ─── Session Middleware (required for request.session) ─────
+SESSION_SECRET = os.getenv("SESSION_SECRET", "supersecretkey")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="lax",
+    https_only=False,
 )
 
 # ─── Add Middleware *before* app starts ─────
@@ -95,7 +107,6 @@ def mount(router, prefix: str, tags: list[str]):
     logger.info(f"🔌 Mounted: {prefix or '/'} — Tags: {', '.join(tags)}")
 
 # ─── Mount All Routes ───────────────────────
-
 mount(auth.router, "/api/v1/auth", ["auth"])
 mount(users.router, "/api/v1/users", ["users"])
 mount(avatar.router, "", ["avatar"])  # avatar.py already has prefix /api/v1/avatar
@@ -114,7 +125,9 @@ mount(models.router, "/api/v1/models", ["models"])
 mount(metrics.router, "/metrics", ["metrics"])
 
 # ─── Mount Static Files ─────────────────────
-uploads_path = settings.uploads_path
+# ✅ Always use absolute path to avoid 404 due to CWD changes
+base_dir = Path(__file__).resolve().parent.parent
+uploads_path = (base_dir / settings.uploads_path).resolve()
 
 if not uploads_path.exists():
     uploads_path.mkdir(parents=True, exist_ok=True)
@@ -124,7 +137,7 @@ else:
 
 app.mount(
     "/uploads",
-    StaticFiles(directory=uploads_path),
+    StaticFiles(directory=str(uploads_path)),
     name="uploads"
 )
 logger.info(f"📁 Uploads served from {uploads_path} at /uploads")

@@ -18,9 +18,8 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
-    # Storage
-    uploads_path: Path = Path("uploads/")
-    upload_dir: str = "uploads"
+    # Storage (✅ normalized, no trailing slash)
+    uploads_path: Path = Path("uploads")  # single source of truth
     model_dir: str = "models"
     avatar_dir: str = "avatars"
 

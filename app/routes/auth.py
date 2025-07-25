@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Response
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from redis.asyncio import Redis
@@ -39,36 +39,43 @@ def with_avatar_fields(user: User) -> UserOut:
 
 
 async def get_current_user(
+    request: Request,
     authorization: str = Header(default=None),
     redis: Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_async_db)
 ) -> UserOut:
     """
-    Fetch user session from Redis.
-    If session token is missing/invalid → raise 401.
+    Dual-mode authentication:
+    1️⃣ Bearer token in Authorization header → Redis lookup
+    2️⃣ SessionMiddleware cookie → DB lookup
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    session_token = authorization.split(" ")[1]
-    try:
+    # --- Mode 1: Bearer token ---
+    if authorization and authorization.startswith("Bearer "):
+        session_token = authorization.split(" ")[1]
         session_data = await redis.get(session_token)
-    except Exception as e:
-        print(f"[AUTH] Redis unavailable in /me → {e}")
-        raise HTTPException(status_code=503, detail="Redis session unavailable")
+        if session_data:
+            try:
+                return UserOut(**json.loads(session_data))
+            except Exception:
+                raise HTTPException(status_code=401, detail="Invalid session data")
 
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Session expired or invalid")
+    # --- Mode 2: SessionMiddleware cookie ---
+    if "session" in request.scope:
+        user_id = request.session.get("user_id")
+        if user_id:
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if user:
+                return with_avatar_fields(user)
 
-    try:
-        user_dict = json.loads(session_data)
-        return UserOut(**user_dict)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid session data")
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 @router.post("/signup", response_model=AuthPayload)
 async def signup(
     payload: SignupRequest,
+    request: Request,
     db: AsyncSession = Depends(get_async_db),
     redis: Redis = Depends(get_redis),
 ):
@@ -106,7 +113,11 @@ async def signup(
         )
     except Exception as e:
         print(f"[AUTH] Redis unavailable during signup: {e}")
-        session_token = None  # indicate no session issued
+        session_token = None
+
+    # Also set session cookie for browser mode
+    if "session" in request.scope:
+        request.session["user_id"] = str(user.id)
 
     return AuthPayload(user=user_out, token=session_token)
 
@@ -114,6 +125,7 @@ async def signup(
 @router.post("/signin", response_model=AuthPayload)
 async def signin(
     payload: SigninRequest,
+    request: Request,
     db: AsyncSession = Depends(get_async_db),
     redis: Redis = Depends(get_redis),
 ):
@@ -147,22 +159,30 @@ async def signin(
         print(f"[AUTH] Redis unavailable during signin: {e}")
         session_token = None
 
+    # Also set session cookie for browser mode
+    if "session" in request.scope:
+        request.session["user_id"] = str(user.id)
+
     return AuthPayload(user=user_out, token=session_token)
 
 
 @router.post("/signout")
 async def signout(
+    request: Request,
     authorization: str = Header(default=None),
     redis: Redis = Depends(get_redis),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        return {"status": "ok"}
+    # Clear bearer token
+    if authorization and authorization.startswith("Bearer "):
+        session_token = authorization.split(" ")[1]
+        try:
+            await redis.delete(session_token)
+        except Exception as e:
+            print(f"[AUTH] Redis unavailable during signout: {e}")
 
-    session_token = authorization.split(" ")[1]
-    try:
-        await redis.delete(session_token)
-    except Exception as e:
-        print(f"[AUTH] Redis unavailable during signout: {e}")
+    # Clear session cookie
+    if "session" in request.scope:
+        request.session.clear()
 
     return {"status": "ok"}
 
