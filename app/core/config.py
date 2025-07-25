@@ -1,12 +1,13 @@
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic import AnyHttpUrl, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ─────────────────────────────────────────────
-# Load from .env explicitly (robust fallback)
+# Load .env file explicitly with fallback
 # ─────────────────────────────────────────────
 env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 if not os.path.exists(env_path):
@@ -26,26 +27,44 @@ class Settings(BaseSettings):
     # ────────────────
     # ENVIRONMENT
     # ────────────────
-    env: str = Field(..., alias="ENV")
+    env: str = Field(default="development", alias="ENV")
 
     # ────────────────
     # DOMAIN + PUBLIC URLS
     # ────────────────
-    domain: str = Field(..., alias="DOMAIN")
-    base_url: str = Field(..., alias="BASE_URL")
-    vite_api_base_url: str = Field(..., alias="VITE_API_BASE_URL")
+    domain: str = Field(default="localhost", alias="DOMAIN")
+    base_url: str = Field(default="http://localhost:8000", alias="BASE_URL")
+    vite_api_base_url: str = Field(default="http://localhost:8000/api/v1", alias="VITE_API_BASE_URL")
 
     # ────────────────
     # FILE SYSTEM
     # ────────────────
-    upload_dir: str = Field(..., alias="UPLOAD_DIR")
-    model_dir: str = Field(..., alias="MODEL_DIR")
-    avatar_dir: str = Field(..., alias="AVATAR_DIR")
+    upload_dir_raw: str = Field(default="./uploads", alias="UPLOAD_DIR")
+    model_dir_raw: str = Field(default="./uploads/models", alias="MODEL_DIR")
+    avatar_dir_raw: str = Field(default="./uploads/avatars", alias="AVATAR_DIR")
+
+    @property
+    def UPLOAD_DIR(self) -> str:
+        """Absolute path to the uploads root directory."""
+        return str(Path(self.upload_dir_raw).resolve())
+
+    @property
+    def MODEL_DIR(self) -> str:
+        """Absolute path to the models directory."""
+        return str(Path(self.model_dir_raw).resolve())
+
+    @property
+    def AVATAR_DIR(self) -> str:
+        """Absolute path to the avatars directory."""
+        return str(Path(self.avatar_dir_raw).resolve())
 
     # ────────────────
     # DATABASE
     # ────────────────
-    database_url: str = Field(..., alias="DATABASE_URL")
+    database_url: str = Field(
+        default="postgresql+asyncpg://makerworks:makerworks@localhost:5432/makerworks",
+        alias="DATABASE_URL"
+    )
 
     @property
     def async_database_url(self) -> str:
@@ -62,7 +81,7 @@ class Settings(BaseSettings):
     # ────────────────
     # REDIS
     # ────────────────
-    redis_url: str = Field(..., alias="REDIS_URL")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
 
     # ────────────────
     # JWT
@@ -72,8 +91,8 @@ class Settings(BaseSettings):
     # ────────────────
     # STRIPE
     # ────────────────
-    stripe_secret_key: str = Field(..., alias="STRIPE_SECRET_KEY")
-    stripe_webhook_secret: str = Field(..., alias="STRIPE_WEBHOOK_SECRET")
+    stripe_secret_key: str = Field(default="sk_test_dummy", alias="STRIPE_SECRET_KEY")
+    stripe_webhook_secret: str = Field(default="whsec_dummy", alias="STRIPE_WEBHOOK_SECRET")
 
     # ────────────────
     # CORS
@@ -95,7 +114,7 @@ class Settings(BaseSettings):
     # ────────────────
     # Monitoring / Prometheus
     # ────────────────
-    metrics_api_key: str = Field(..., alias="METRICS_API_KEY")
+    metrics_api_key: str = Field(default="dev-metrics", alias="METRICS_API_KEY")
 
 
 @lru_cache

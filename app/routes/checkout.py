@@ -20,7 +20,7 @@ from app.schemas.enums import CurrencyEnum
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/checkout", tags=["checkout"])
+router = APIRouter()
 
 # ───────────────────────────────────────────────
 # Stripe Setup

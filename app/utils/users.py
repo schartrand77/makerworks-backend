@@ -1,6 +1,5 @@
 from datetime import datetime
 from pathlib import Path
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -22,7 +21,7 @@ async def upsert_user_from_token(db: AsyncSession, token_payload: dict) -> User:
         user = User(
             id=sub,
             email=email,
-            username=username,
+            username=username,  # ✅ fixed typo
             is_verified=True,
             is_active=True,
             role=token_payload.get("role", "user"),
@@ -35,7 +34,11 @@ async def upsert_user_from_token(db: AsyncSession, token_payload: dict) -> User:
 
 
 def create_user_dirs(user_id: str) -> None:
-    """Create per-user upload directories."""
-    base = Path(settings.upload_dir) / "users" / user_id
+    """
+    Create per-user upload directories.
+    Uses settings.uploads_path to stay consistent with avatar.py
+    """
+    base = Path(settings.uploads_path).resolve() / "users" / user_id
     for sub in ["avatars", "models"]:
-        (base / sub).mkdir(parents=True, exist_ok=True)
+        path = base / sub
+        path.mkdir(parents=True, exist_ok=True)

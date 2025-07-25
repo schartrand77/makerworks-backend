@@ -8,6 +8,9 @@ from app.schemas.users import UserOut
 import logging
 import prometheus_client
 
+# ✅ Import the global Redis connection
+from app.services.cache.redis_service import redis as global_redis
+
 logger = logging.getLogger("user_cache")
 
 # Redis Key Prefixes
@@ -55,7 +58,17 @@ async def cache_user_by_username(redis: Redis, user: UserOut, ttl: timedelta = D
     logger.info(f"[REDIS] Cached user by username: {user.username}")
 
 
-async def get_user_by_id(redis: Redis, user_id: UUID) -> Optional[UserOut]:
+async def cache_user_profile(user: UserOut, ttl: timedelta = DEFAULT_TTL, redis: Redis = global_redis):
+    """
+    Unified cache function to store both ID and username keys for a user.
+    Now uses the global Redis instance by default.
+    """
+    await cache_user_by_id(redis, user, ttl)
+    await cache_user_by_username(redis, user, ttl)
+    logger.debug(f"[REDIS] Cached full user profile for {user.id}")
+
+
+async def get_user_by_id(user_id: UUID, redis: Redis = global_redis) -> Optional[UserOut]:
     key = USER_ID_KEY(user_id)
     data = await redis.get(key)
     if data:
@@ -68,7 +81,7 @@ async def get_user_by_id(redis: Redis, user_id: UUID) -> Optional[UserOut]:
         return None
 
 
-async def get_user_by_username(redis: Redis, username: str) -> Optional[UserOut]:
+async def get_user_by_username(username: str, redis: Redis = global_redis) -> Optional[UserOut]:
     key = USERNAME_KEY(username)
     data = await redis.get(key)
     if data:
@@ -81,13 +94,13 @@ async def get_user_by_username(redis: Redis, username: str) -> Optional[UserOut]
         return None
 
 
-async def delete_user_cache(redis: Redis, user_id: UUID, username: str):
+async def delete_user_cache(user_id: UUID, username: str, redis: Redis = global_redis):
     deleted = await redis.delete(USER_ID_KEY(user_id), USERNAME_KEY(username))
     user_cache_deletes.inc(deleted)
     logger.info(f"[REDIS] Deleted {deleted} user cache entries for {user_id} / {username}")
 
 
-async def auto_clear_expired_keys(redis: Redis):
+async def auto_clear_expired_keys(redis: Redis = global_redis):
     """
     Optional: clears all expired keys in the Redis user cache namespace.
     This only makes sense in Redis configurations that do not automatically evict expired keys.

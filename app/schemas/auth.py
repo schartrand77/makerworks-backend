@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
 from uuid import UUID
 from datetime import datetime
 from typing import Optional
@@ -15,19 +15,38 @@ class SigninRequest(BaseModel):
     password: str
 
 
+# ✅ Aliases to match route imports
+UserCreate = SignupRequest
+UserSignIn = SigninRequest
+
+
 class UserOut(BaseModel):
     id: UUID
     email: EmailStr
     username: str
-    role: Optional[str] = None               # 🩹 Added role
+    role: Optional[str] = None
     created_at: datetime
     last_login: Optional[datetime] = None
     is_verified: bool
 
-    class Config:
-        orm_mode = True
+    # ✅ Keep avatar_url as plain string to avoid Pydantic HttpUrl validation
+    avatar_url: Optional[str] = None
+
+    @field_validator('avatar_url', mode='before')
+    @classmethod
+    def force_string(cls, v):
+        if v is None:
+            return v
+        return str(v)
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True
+    )
 
 
 class AuthPayload(BaseModel):
     user: UserOut
     token: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

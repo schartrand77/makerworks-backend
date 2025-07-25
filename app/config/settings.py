@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     model_dir: str = "models"
     avatar_dir: str = "avatars"
 
+    # Legacy compatibility for code expecting `upload_dir`
+    @property
+    def upload_dir(self) -> Path:
+        """Alias for backwards compatibility with older code."""
+        return self.uploads_path
+
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
@@ -49,7 +55,7 @@ class Settings(BaseSettings):
     flower_port: Optional[int] = None
 
     # CORS
-    cors_origins: List[str] = ["*"]
+    cors_origins: List[str] = ["http://localhost:5173"]
 
     @property
     def debug(self) -> bool:
