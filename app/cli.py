@@ -1,5 +1,6 @@
 import asyncio
 import os
+from functools import wraps
 
 import click
 
@@ -16,6 +17,20 @@ def cli() -> None:
     pass
 
 
+def run_async(func):
+    """Run async function and handle errors with a friendly message."""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            asyncio.run(func(*args, **kwargs))
+        except Exception as exc:  # pragma: no cover - just logging
+            click.secho(f"❌ {exc}", fg="red")
+            raise click.ClickException(str(exc)) from exc
+
+    return wrapper
+
+
 @cli.group()
 def update() -> None:
     """Update various system components."""
@@ -26,6 +41,9 @@ def update() -> None:
 @click.argument("revision", default="head")
 def alembic(revision: str) -> None:
     """Run Alembic migrations up to REVISION."""
+    if not os.path.exists(ALEMBIC_INI):
+        raise click.ClickException(f"alembic.ini not found: {ALEMBIC_INI}")
+
     cfg = Config(ALEMBIC_INI)
     command.upgrade(cfg, revision)
     click.echo(f"✅ Alembic upgraded to {revision}.")
@@ -42,7 +60,7 @@ def init() -> None:
     """Create all database tables."""
     from app.init_db import init_models
 
-    asyncio.run(init_models())
+    run_async(init_models)()
     click.echo("✅ Database tables created.")
 
 
@@ -51,7 +69,7 @@ def drop() -> None:
     """Drop all database tables."""
     from app.drop_db import drop_all
 
-    asyncio.run(drop_all())
+    run_async(drop_all)()
     click.echo("✅ Database tables dropped.")
 
 
@@ -60,7 +78,7 @@ def subset() -> None:
     """Create subset of tables (User, Filament)."""
     from app.init_subset import create_subset
 
-    asyncio.run(create_subset())
+    run_async(create_subset)()
     click.echo("✅ Subset tables created.")
 
 
@@ -75,7 +93,7 @@ def list_users_cmd() -> None:
     """List all users."""
     from app.scripts.user_role import list_users
 
-    asyncio.run(list_users())
+    run_async(list_users)()
 
 
 @users.command("change-role")
@@ -90,7 +108,7 @@ def change_role(email: str, role: str) -> None:
     """Change a user's role."""
     from app.scripts.user_role import change_user_role
 
-    asyncio.run(change_user_role(email, role))
+    run_async(change_user_role)(email, role)
 
 
 @cli.group()
@@ -104,7 +122,7 @@ def seed_filaments_cmd() -> None:
     """Seed sample filaments."""
     from scripts.seed_filaments import seed_filaments
 
-    asyncio.run(seed_filaments())
+    run_async(seed_filaments)()
     click.echo("✅ Filaments seeded.")
 
 
