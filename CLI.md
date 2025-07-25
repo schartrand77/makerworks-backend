@@ -1,8 +1,9 @@
 # MakerWorks CLI
 
-The MakerWorks command-line interface exposes common maintenance tasks. Once the
-package is installed (e.g. via `pip install -e .`) the `mw` command becomes
-available.
+The MakerWorks command-line interface exposes common maintenance tasks.
+Because the project isn't distributed as a package, run the CLI via Poetry.
+After installing dependencies with `poetry install` (or `pip install -r
+requirements.txt`), invoke commands using `poetry run mw`.
 
 Run `mw --help` to view top level options.
 
