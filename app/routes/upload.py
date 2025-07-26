@@ -112,7 +112,6 @@ async def upload_model(
         logger.warning(f"[UPLOAD] Unusual content type '{file.content_type}' for file '{file.filename}'")
 
     now = datetime.utcnow()
-    now_iso = now.isoformat()
 
     model_id = str(uuid4())
     model_dir = get_model_dir(user_id)
@@ -126,13 +125,16 @@ async def upload_model(
     metadata = result.get("metadata", {})
     thumbnail_rel_path = result.get("thumbnail")
 
+    file_url = f"{BASE_URL}/uploads/users/{user_id}/models/{model_id}{ext}"
+
     model_kwargs = {
         "id": model_id,
         "name": name or file.filename,
         "description": description,
         "filename": file.filename,
         "filepath": str(save_path.relative_to(BASE_UPLOAD_DIR)),
-        "uploader_id": user_id,
+        "file_url": file_url,
+        "user_id": user_id,
         "uploaded_at": now,
         "geometry_hash": None,
         "is_duplicate": False,
@@ -153,7 +155,10 @@ async def upload_model(
     return ModelUploadResponse(
         id=model.id,
         name=model.name,
-        url=f"{BASE_URL}/uploads/users/{user_id}/models/{model_id}{ext}",
-        uploaded_at=now_iso,
+        file_url=file_url,
         thumbnail_url=f"{BASE_URL}/uploads/{thumbnail_rel_path}" if thumbnail_rel_path else None,
+        created_at=now,
+        uploaded_by=user_id,
+        geometry_hash=model.geometry_hash,
+        is_duplicate=model.is_duplicate,
     )
