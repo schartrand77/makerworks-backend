@@ -1,107 +1,126 @@
-"""
-Run with Blender:
-blender --background --python blender_pipeline.py -- <model_path> <output_dir>
-"""
-
+#!/usr/bin/env python3
 import bpy
 import sys
+import os
+import math
 import json
-import pathlib
+import traceback
 
-def main(model_path: str, output_dir: str):
-    model_path = pathlib.Path(model_path).resolve()
-    output_dir = pathlib.Path(output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+# ✅ Debug logger
+def debug(msg: str):
+    print(f"[DEBUG] {msg}", flush=True)
 
-    # clear scene
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+# ✅ Ensure STL importer is loaded
+def ensure_stl_addon():
+    try:
+        import io_mesh_stl
+        debug("✅ io_mesh_stl loaded from addons_core")
+    except ImportError:
+        debug("⚠️ io_mesh_stl not found, trying to enable addon")
+        bpy.ops.preferences.addon_enable(module="io_mesh_stl")
 
-    # import model
-    ext = model_path.suffix.lower()
+# ✅ Import model
+def import_model(filepath: str):
+    ext = os.path.splitext(filepath)[1].lower()
+    debug(f"Detected extension: {ext}")
     if ext == ".stl":
-        bpy.ops.import_mesh.stl(filepath=str(model_path))
-    elif ext == ".3mf":
-        # Blender's default distribution lacks a native 3MF importer.  When
-        # a 3MF import add-on is installed it typically exposes an X3D style
-        # operator.  Use that operator so the pipeline can handle .3mf files
-        # if the add-on is available.
-        bpy.ops.import_scene.x3d(filepath=str(model_path))
+        ensure_stl_addon()
+        bpy.ops.import_mesh.stl(filepath=filepath)
+    elif ext == ".obj":
+        bpy.ops.import_scene.obj(filepath=filepath)
+    elif ext == ".fbx":
+        bpy.ops.import_scene.fbx(filepath=filepath)
     else:
-        print(json.dumps({"error": "Unsupported format"}))
-        sys.exit(1)
+        raise ValueError(f"Unsupported file extension: {ext}")
 
-    obj = bpy.context.selected_objects[0]
-    bpy.context.view_layer.objects.active = obj
+# ✅ Compute metadata
+def compute_metadata(obj):
+    volume = 0.0
+    if obj.type == 'MESH':
+        mesh = obj.data
+        mesh.calc_volume()
+        volume = mesh.volume
 
-    # center and scale
-    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
-    obj.location = (0, 0, 0)
-    bpy.ops.transform.resize(value=(1, 1, 1))
-
-    mesh = obj.data
-    volume = obj.dimensions.x * obj.dimensions.y * obj.dimensions.z
-    bbox = [round(c, 3) for c in obj.dimensions]
-    faces = len(mesh.polygons)
-    vertices = len(mesh.vertices)
-
-    # set camera
-    cam_data = bpy.data.cameras.new("Camera")
-    cam_obj = bpy.data.objects.new("Camera", cam_data)
-    bpy.context.collection.objects.link(cam_obj)
-    bpy.context.scene.camera = cam_obj
-    cam_obj.location = (0, -3, 1.5)
-    cam_obj.rotation_euler = (1.2, 0, 0)
-
-    # light
-    light_data = bpy.data.lights.new(name="Light", type='SUN')
-    light_obj = bpy.data.objects.new(name="Light", object_data=light_data)
-    bpy.context.collection.objects.link(light_obj)
-    light_obj.location = (5, -5, 5)
-
-    scene = bpy.context.scene
-    scene.render.engine = 'BLENDER_EEVEE'
-    scene.render.resolution_x = 800
-    scene.render.resolution_y = 800
-    scene.render.fps = 24
-
-    # thumbnail
-    thumb_path = output_dir / f"{model_path.stem}_thumb.png"
-    scene.render.image_settings.file_format = 'PNG'
-    scene.render.filepath = str(thumb_path)
-    bpy.ops.render.render(write_still=True)
-
-    # turntable webm
-    scene.frame_start = 1
-    scene.frame_end = 120
-    obj.rotation_euler = (0, 0, 0)
-    obj.keyframe_insert(data_path="rotation_euler", frame=scene.frame_start)
-    obj.rotation_euler = (0, 0, 6.28319)
-    obj.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end)
-
-    scene.render.image_settings.file_format = 'FFMPEG'
-    scene.render.ffmpeg.format = 'WEBM'
-    webm_path = output_dir / f"{model_path.stem}_turntable.webm"
-    scene.render.filepath = str(webm_path)
-    bpy.ops.render.render(animation=True, write_still=False)
-
-    result = {
-        "thumbnail": str(thumb_path.relative_to(output_dir.parent)),
-        "webm": str(webm_path.relative_to(output_dir.parent)),
-        "metadata": {
-            "volume": round(volume, 3),
-            "bbox": bbox,
-            "faces": faces,
-            "vertices": vertices
-        }
+    bbox = [abs(obj.dimensions.x), abs(obj.dimensions.y), abs(obj.dimensions.z)]
+    return {
+        "name": obj.name,
+        "volume": volume,
+        "bbox": bbox,
+        "faces": len(obj.data.polygons) if obj.type == 'MESH' else 0,
+        "vertices": len(obj.data.vertices) if obj.type == 'MESH' else 0
     }
 
-    print(json.dumps(result))
+# ✅ Safe render engine detection for Blender 4.5+
+def set_render_engine(scene):
+    available_engines = [
+        getattr(e, "bl_idname", None)
+        for e in bpy.types.RenderEngine.__subclasses__()
+        if hasattr(e, "bl_idname")
+    ]
+    available_engines = [e for e in available_engines if e is not None]
+    debug(f"Available render engines: {available_engines}")
 
+    if "BLENDER_EEVEE" in available_engines:
+        scene.render.engine = "BLENDER_EEVEE"
+    elif "BLENDER_EEVEE_NEXT" in available_engines:
+        scene.render.engine = "BLENDER_EEVEE_NEXT"
+    elif "CYCLES" in available_engines:
+        scene.render.engine = "CYCLES"
+    else:
+        debug("⚠️ No known engine found, falling back to WORKBENCH")
+        scene.render.engine = "BLENDER_WORKBENCH"
+
+# ✅ Main pipeline
+def main():
+    try:
+        model_path = sys.argv[-2]
+        output_dir = sys.argv[-1]
+        debug(f"Starting Blender pipeline...")
+        debug(f"Model path: {model_path}")
+        debug(f"Output dir: {output_dir}")
+
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        import_model(model_path)
+
+        obj = bpy.context.selected_objects[0]
+        debug(f"Imported object: {obj.name}")
+
+        meta = compute_metadata(obj)
+        debug(f"Volume: {meta['volume']}, BBox: {meta['bbox']}, Faces: {meta['faces']}, Vertices: {meta['vertices']}")
+
+        scene = bpy.context.scene
+        set_render_engine(scene)
+
+        # ✅ Render thumbnail
+        cam = bpy.data.cameras.new("RenderCam")
+        cam_obj = bpy.data.objects.new("RenderCam", cam)
+        bpy.context.collection.objects.link(cam_obj)
+
+        bpy.context.scene.camera = cam_obj
+        cam_obj.location = (obj.location.x + 2, obj.location.y + 2, obj.location.z + 2)
+        cam_obj.rotation_euler = (math.radians(60), 0, math.radians(45))
+
+        bpy.context.view_layer.update()
+
+        thumb_path = os.path.join(output_dir, "thumbnail.png")
+        bpy.context.scene.render.filepath = thumb_path
+        bpy.context.scene.render.resolution_x = 512
+        bpy.context.scene.render.resolution_y = 512
+        bpy.ops.render.render(write_still=True)
+
+        debug(f"✅ Rendered thumbnail to {thumb_path}")
+
+        result = {
+            "status": "ok",
+            "metadata": meta,
+            "thumbnail": thumb_path
+        }
+        print(json.dumps(result))
+    except Exception as e:
+        debug("Pipeline failed with exception:")
+        debug(traceback.format_exc())
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
 
 if __name__ == "__main__":
-    argv = sys.argv
-    argv = argv[argv.index("--") + 1:]
-    if len(argv) != 2:
-        print(json.dumps({"error": "Usage: blender --background --python blender_pipeline.py -- <model_path> <output_dir>"}))
-        sys.exit(1)
-    main(argv[0], argv[1])
+    main()

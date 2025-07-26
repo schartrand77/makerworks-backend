@@ -1,10 +1,11 @@
 import json
 from datetime import timedelta
 from uuid import UUID
-from typing import Optional
+from typing import Optional, Union
 
 from redis.asyncio import Redis
 from app.schemas.users import UserOut
+from app.models.models import User as UserORM  # ✅ SQLAlchemy ORM model
 import logging
 import prometheus_client
 
@@ -36,36 +37,48 @@ user_cache_deletes = prometheus_client.Counter(
 )
 
 
-def serialize_user(user: UserOut) -> str:
-    return user.model_dump_json()
+def serialize_user(user: Union[UserOut, UserORM]) -> str:
+    """
+    Ensure we always serialize to JSON using Pydantic, even if we receive a SQLAlchemy ORM object.
+    """
+    if isinstance(user, UserOut):
+        return user.model_dump_json()
+    elif isinstance(user, UserORM):
+        pydantic_user = UserOut.model_validate(user)
+        return pydantic_user.model_dump_json()
+    else:
+        raise TypeError(f"Unsupported user type for serialization: {type(user)}")
 
 
 def deserialize_user(data: str) -> UserOut:
     return UserOut.model_validate_json(data)
 
 
-async def cache_user_by_id(redis: Redis, user: UserOut, ttl: timedelta = DEFAULT_TTL):
+async def cache_user_by_id(redis: Redis, user: Union[UserOut, UserORM], ttl: timedelta = DEFAULT_TTL):
     key = USER_ID_KEY(user.id)
     await redis.set(key, serialize_user(user), ex=ttl)
     user_cache_sets.inc()
     logger.info(f"[REDIS] Cached user by ID: {user.id}")
 
 
-async def cache_user_by_username(redis: Redis, user: UserOut, ttl: timedelta = DEFAULT_TTL):
+async def cache_user_by_username(redis: Redis, user: Union[UserOut, UserORM], ttl: timedelta = DEFAULT_TTL):
     key = USERNAME_KEY(user.username)
     await redis.set(key, serialize_user(user), ex=ttl)
     user_cache_sets.inc()
     logger.info(f"[REDIS] Cached user by username: {user.username}")
 
 
-async def cache_user_profile(user: UserOut, ttl: timedelta = DEFAULT_TTL, redis: Redis = global_redis):
+async def cache_user_profile(user: Union[UserOut, UserORM], ttl: timedelta = DEFAULT_TTL, redis: Redis = global_redis):
     """
     Unified cache function to store both ID and username keys for a user.
-    Now uses the global Redis instance by default.
+    Accepts both SQLAlchemy User ORM and Pydantic UserOut.
     """
-    await cache_user_by_id(redis, user, ttl)
-    await cache_user_by_username(redis, user, ttl)
-    logger.debug(f"[REDIS] Cached full user profile for {user.id}")
+    # Ensure we work with Pydantic for consistency
+    pydantic_user = user if isinstance(user, UserOut) else UserOut.model_validate(user)
+
+    await cache_user_by_id(redis, pydantic_user, ttl)
+    await cache_user_by_username(redis, pydantic_user, ttl)
+    logger.debug(f"[REDIS] Cached full user profile for {pydantic_user.id}")
 
 
 async def get_user_by_id(user_id: UUID, redis: Redis = global_redis) -> Optional[UserOut]:
@@ -100,6 +113,19 @@ async def delete_user_cache(user_id: UUID, username: str, redis: Redis = global_
     logger.info(f"[REDIS] Deleted {deleted} user cache entries for {user_id} / {username}")
 
 
+async def invalidate_user_cache(user_id: UUID, username: Optional[str] = None, redis: Redis = global_redis):
+    """
+    Public wrapper to invalidate all cache entries for a user.
+    Called when avatar or profile updates occur.
+    """
+    keys = [USER_ID_KEY(user_id)]
+    if username:
+        keys.append(USERNAME_KEY(username))
+    deleted = await redis.delete(*keys)
+    user_cache_deletes.inc(deleted)
+    logger.info(f"[REDIS] Invalidated cache for user {user_id} ({username})")
+
+
 async def auto_clear_expired_keys(redis: Redis = global_redis):
     """
     Optional: clears all expired keys in the Redis user cache namespace.
@@ -115,3 +141,12 @@ async def auto_clear_expired_keys(redis: Redis = global_redis):
         logger.info(f"[REDIS] Auto-cleared {count} expired user cache keys on boot.")
     except Exception as e:
         logger.warning(f"[REDIS] Error auto-clearing expired keys: {e}")
+
+
+__all__ = [
+    "cache_user_profile",
+    "get_user_by_id",
+    "get_user_by_username",
+    "delete_user_cache",
+    "invalidate_user_cache"
+]

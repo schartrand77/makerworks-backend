@@ -39,7 +39,7 @@ app = FastAPI(
     description="MakerWorks backend API",
 )
 
-# ─── Session Middleware (required for request.session) ─────
+# ─── Session Middleware ──────────────────────
 SESSION_SECRET = os.getenv("SESSION_SECRET", "supersecretkey")
 app.add_middleware(
     SessionMiddleware,
@@ -88,9 +88,6 @@ async def debug_origin(request: Request, call_next):
 # ─── Debug Routes Endpoint ──────────────────
 @app.get("/debug/routes", include_in_schema=False)
 async def debug_routes():
-    """
-    Returns a list of all registered routes with methods, path, name, and tags.
-    """
     routes_info = []
     for route in app.router.routes:
         routes_info.append({
@@ -125,7 +122,6 @@ mount(models.router, "/api/v1/models", ["models"])
 mount(metrics.router, "/metrics", ["metrics"])
 
 # ─── Mount Static Files ─────────────────────
-# ✅ Always use absolute path to avoid 404 due to CWD changes
 base_dir = Path(__file__).resolve().parent.parent
 uploads_path = (base_dir / settings.uploads_path).resolve()
 
@@ -135,9 +131,19 @@ if not uploads_path.exists():
 else:
     logger.info(f"📁 Uploads directory exists: {uploads_path}")
 
+# Disable caching to avoid stale 404s during dev
 app.mount(
     "/uploads",
-    StaticFiles(directory=str(uploads_path)),
+    StaticFiles(directory=str(uploads_path), html=False, check_dir=True),
     name="uploads"
 )
 logger.info(f"📁 Uploads served from {uploads_path} at /uploads")
+
+# ─── Normalize Upload URL Handling ──────────
+# Avoids 307 redirect when hitting /api/v1/upload vs /api/v1/upload/
+@app.middleware("http")
+async def strip_trailing_slash(request: Request, call_next):
+    scope = request.scope
+    if scope["path"] != "/" and scope["path"].endswith("/"):
+        scope["path"] = scope["path"].rstrip("/")
+    return await call_next(request)

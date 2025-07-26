@@ -14,11 +14,12 @@ from app.dependencies.auth import get_current_user
 from app.models import ModelMetadata as Model3D, User
 from app.schemas.models import ModelUploadResponse
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 logger = logging.getLogger(__name__)
 
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
-BASE_UPLOAD_DIR: Path = Path(settings.uploads_path).resolve()
+BASE_UPLOAD_DIR: Path = (Path(__file__).resolve().parent.parent / settings.uploads_path).resolve()
+logger.info(f"[UPLOAD] Base upload dir resolved: {BASE_UPLOAD_DIR}")
 
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -30,12 +31,17 @@ ALLOWED_MODEL_TYPES = {
     "application/3mf",
 }
 
-BLENDER_SCRIPT = Path(__file__).parent.parent / "scripts" / "blender_pipeline.py"
+BLENDER_SCRIPT = (Path(__file__).parent.parent / "scripts" / "blender_pipeline.py").resolve()
 
 
 def get_model_dir(user_id: str) -> Path:
-    path = BASE_UPLOAD_DIR / "users" / user_id / "models"
+    """
+    Safely creates and returns the model directory for a user.
+    """
+    safe_user_id = str(user_id).strip()
+    path = (BASE_UPLOAD_DIR / "users" / safe_user_id / "models").resolve()
     path.mkdir(parents=True, exist_ok=True)
+    logger.debug(f"[UPLOAD] Model dir for user {safe_user_id}: {path}")
     return path
 
 
@@ -44,7 +50,7 @@ def save_file(destination: Path, data: bytes):
         with open(destination, "wb") as buffer:
             buffer.write(data)
     except Exception as e:
-        logger.exception(f"Saving file failed: {e}")
+        logger.exception(f"[UPLOAD] Saving file failed: {e}")
         raise HTTPException(500, "Failed to save file") from e
 
 
@@ -55,25 +61,48 @@ def validate_file_size(data: bytes, max_size: int):
 
 def run_blender_pipeline(model_path: Path, output_dir: Path) -> dict:
     if not BLENDER_SCRIPT.exists():
-        logger.error("Blender pipeline script missing.")
+        logger.error("[UPLOAD] Blender pipeline script missing.")
         raise HTTPException(500, "Blender pipeline script missing.")
+
     cmd = [
-        "blender", "--background", "--python", str(BLENDER_SCRIPT.resolve()),
-        "--", str(model_path.resolve()), str(output_dir.resolve())
+        "blender",
+        "--background",
+        "--factory-startup",
+        "--python-expr",
+        # Ensure STL addon is enabled before running pipeline
+        "import bpy; bpy.ops.wm.addon_enable(module='io_mesh_stl')",
+        "--python", str(BLENDER_SCRIPT),
+        "--", str(model_path), str(output_dir)
     ]
-    logger.info(f"Running Blender pipeline: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        logger.error(f"Blender pipeline failed. stdout:\n{result.stdout}\nstderr:\n{result.stderr}")
-        raise HTTPException(500, "Blender pipeline failed.")
+    logger.info(f"[UPLOAD] Running Blender pipeline: {' '.join(cmd)}")
+
     try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError:
-        logger.error(f"Invalid JSON from Blender pipeline: {result.stdout}")
-        raise HTTPException(500, "Invalid JSON from Blender pipeline.")
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except Exception as e:
+        logger.exception(f"[UPLOAD] Failed to execute Blender pipeline: {e}")
+        raise HTTPException(500, "Failed to execute Blender pipeline.") from e
+
+    if result.returncode != 0:
+        logger.error(f"[UPLOAD] Blender pipeline failed.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        if "import_mesh.stl" in result.stdout or "import_mesh.stl" in result.stderr:
+            raise HTTPException(500, "Blender STL import add-on is missing or failed to load.")
+        raise HTTPException(500, "Blender pipeline failed.")
+
+    stdout_clean = result.stdout.strip()
+    if not stdout_clean:
+        logger.error(f"[UPLOAD] Blender pipeline returned empty output.\nSTDERR:\n{result.stderr}")
+        raise HTTPException(500, "Blender pipeline returned empty output.")
+
+    try:
+        data = json.loads(stdout_clean)
+        logger.debug(f"[UPLOAD] Blender pipeline output parsed successfully.")
+        return data
+    except json.JSONDecodeError as e:
+        logger.error(f"[UPLOAD] Invalid JSON from Blender pipeline.\nSTDOUT:\n{stdout_clean}\nSTDERR:\n{result.stderr}")
+        raise HTTPException(500, "Invalid JSON from Blender pipeline.") from e
 
 
-@router.post("/", response_model=ModelUploadResponse)
+@router.post("", response_model=ModelUploadResponse)
 async def upload_model(
     file: UploadFile = File(...),
     name: str = Form(None),
@@ -89,7 +118,6 @@ async def upload_model(
     ext = Path(file.filename).suffix.lower()
     if not ext:
         raise HTTPException(400, "Missing file extension.")
-
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"Invalid file extension: {ext}. Only .stl and .3mf are allowed.")
 
@@ -97,20 +125,19 @@ async def upload_model(
     validate_file_size(contents, MAX_FILE_SIZE_BYTES)
 
     if file.content_type not in ALLOWED_MODEL_TYPES:
-        logger.warning(f"Unusual content type '{file.content_type}' for file '{file.filename}'")
+        logger.warning(f"[UPLOAD] Unusual content type '{file.content_type}' for file '{file.filename}'")
 
     now = datetime.utcnow()
     now_iso = now.isoformat()
 
     model_id = str(uuid4())
     model_dir = get_model_dir(user_id)
-    save_path = model_dir / f"{model_id}{ext}"
-    logger.info(f"Saving model for user {user_id} to: {save_path}")
+    save_path = (model_dir / f"{model_id}{ext}").resolve()
+    logger.info(f"[UPLOAD] Saving model for user {user_id} to: {save_path}")
 
     save_file(save_path, contents)
 
-    output_dir = model_dir
-    blender_output = run_blender_pipeline(save_path, output_dir)
+    blender_output = run_blender_pipeline(save_path, model_dir)
 
     metadata = blender_output.get("metadata", {})
     thumbnail_rel_path = blender_output.get("thumbnail")
@@ -130,21 +157,20 @@ async def upload_model(
         "bbox": json.dumps(metadata.get("bbox", [])),
         "faces": metadata.get("faces", 0),
         "vertices": metadata.get("vertices", 0),
-        "thumbnail_url": f"{BASE_URL}/uploads/{thumbnail_rel_path}",
+        "thumbnail_url": f"{BASE_URL}/uploads/{thumbnail_rel_path}" if thumbnail_rel_path else None,
     }
 
     model = Model3D(**model_kwargs)
-
     db.add(model)
     await db.commit()
     await db.refresh(model)
 
-    logger.info(f"Model {model.id} uploaded & processed for user {user_id}")
+    logger.info(f"[UPLOAD] Model {model.id} uploaded & processed for user {user_id}")
 
     return ModelUploadResponse(
         id=model.id,
         name=model.name,
         url=f"{BASE_URL}/uploads/users/{user_id}/models/{model_id}{ext}",
         uploaded_at=now_iso,
-        thumbnail_url=f"{BASE_URL}/uploads/{thumbnail_rel_path}",
+        thumbnail_url=f"{BASE_URL}/uploads/{thumbnail_rel_path}" if thumbnail_rel_path else None,
     )

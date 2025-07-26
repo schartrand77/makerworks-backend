@@ -12,6 +12,8 @@ from app.db.session import get_db
 from app.models.models import User
 from app.dependencies.auth import get_current_user
 from app.core.config import settings
+from app.services.cache.user_cache import cache_user_profile, invalidate_user_cache  # ✅ Redis cache helpers
+from app.schemas.users import UserOut  # ✅ Pydantic schema for serialization
 
 router = APIRouter()
 
@@ -33,9 +35,10 @@ async def upload_avatar(
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Decide processing based on extension
+    # ✅ Process avatar
+    avatar_path = os.path.join(user_dir, "avatar.png")
+
     if ext in UPLOAD_EXTENSIONS_3D:
-        # 3D file → run Blender render
         script_path = os.path.join(settings.BASE_DIR, "scripts", "render_avatar.py")
         process = subprocess.run(
             [
@@ -53,8 +56,6 @@ async def upload_avatar(
         if process.returncode != 0:
             raise HTTPException(status_code=500, detail="Blender render failed")
     else:
-        # 2D image → Pillow resize/crop, skip Blender
-        avatar_path = os.path.join(user_dir, "avatar.png")
         try:
             with Image.open(input_path) as img:
                 img = img.convert("RGBA")
@@ -65,7 +66,7 @@ async def upload_avatar(
         finally:
             os.remove(input_path)
 
-    # Update DB with new avatar timestamp
+    # ✅ Update DB timestamp
     await db.execute(
         update(User)
         .where(User.id == user_id)
@@ -73,4 +74,16 @@ async def upload_avatar(
     )
     await db.commit()
 
-    return {"status": "ok", "avatar_url": f"/uploads/users/{user_id}/avatars/avatar.png"}
+    # ✅ Convert ORM -> Pydantic before caching to avoid AttributeError
+    pydantic_user = UserOut.model_validate(current_user)
+
+    # ✅ Bust Redis cache and repopulate with fresh user profile
+    await invalidate_user_cache(user_id, current_user.username)
+    await cache_user_profile(pydantic_user)
+
+    avatar_url = f"/uploads/users/{user_id}/avatars/avatar.png"
+
+    return {
+        "status": "ok",
+        "avatar_url": avatar_url
+    }
