@@ -10,7 +10,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
-from app.db.base_class import Base  # ✅ Correct base class
+from app.db.base_class import Base
 
 
 class User(Base):
@@ -39,7 +39,13 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
-    models = relationship("ModelMetadata", back_populates="user", cascade="all, delete-orphan")
+    # ✅ Disambiguate by specifying foreign_keys
+    models = relationship(
+        "ModelMetadata",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="ModelMetadata.user_id"
+    )
     favorites = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
     estimates = relationship("Estimate", back_populates="user", cascade="all, delete-orphan")
@@ -101,7 +107,9 @@ class ModelMetadata(Base):
     __tablename__ = "models"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    uploader_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
@@ -121,7 +129,9 @@ class ModelMetadata(Base):
     faces = Column(Integer, nullable=True)
     vertices = Column(Integer, nullable=True)
 
-    user = relationship("User", back_populates="models")
+    # ✅ Explicit foreign_keys to avoid ambiguity
+    user = relationship("User", back_populates="models", foreign_keys=[user_id])
+    uploader = relationship("User", foreign_keys=[uploader_id])
     favorites = relationship("Favorite", back_populates="model", cascade="all, delete-orphan")
 
 

@@ -36,7 +36,7 @@ class ModelUpdate(BaseModel):
 
 
 class ModelOut(ModelBase):
-    id: int
+    id: str  # ✅ Changed from int to str for UUID compatibility
     file_url: str
     thumbnail_url: Optional[str] = None
     created_at: datetime
@@ -67,7 +67,7 @@ class ModelUploadRequest(BaseModel):
 
 
 class ModelUploadResponse(BaseModel):
-    id: int
+    id: str  # ✅ Changed from int to str to handle UUIDs correctly
     name: str
     file_url: str
     thumbnail_url: Optional[str] = None

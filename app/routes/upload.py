@@ -18,7 +18,10 @@ router = APIRouter(redirect_slashes=False)
 logger = logging.getLogger(__name__)
 
 BASE_URL: str = getattr(settings, "base_url", "http://localhost:8000").rstrip("/")
-BASE_UPLOAD_DIR: Path = (Path(__file__).resolve().parent.parent / settings.uploads_path).resolve()
+
+# ✅ Force uploads to ./uploads at project root
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+BASE_UPLOAD_DIR: Path = (PROJECT_ROOT / "uploads").resolve()
 logger.info(f"[UPLOAD] Base upload dir resolved: {BASE_UPLOAD_DIR}")
 
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -32,11 +35,9 @@ ALLOWED_MODEL_TYPES = {
 
 
 def get_model_dir(user_id: str) -> Path:
-    """
-    Safely creates and returns the model directory for a user.
-    """
+    """Safely creates and returns the model directory for a user."""
     safe_user_id = str(user_id).strip()
-    path = (BASE_UPLOAD_DIR / "users" / safe_user_id / "models").resolve()
+    path = BASE_UPLOAD_DIR / "users" / safe_user_id / "models"
     path.mkdir(parents=True, exist_ok=True)
     logger.debug(f"[UPLOAD] Model dir for user {safe_user_id}: {path}")
     return path
@@ -113,9 +114,9 @@ async def upload_model(
 
     now = datetime.utcnow()
 
-    model_id = str(uuid4())
+    model_id = uuid4()  # keep as UUID internally
     model_dir = get_model_dir(user_id)
-    save_path = (model_dir / f"{model_id}{ext}").resolve()
+    save_path = model_dir / f"{model_id}{ext}"
     logger.info(f"[UPLOAD] Saving model for user {user_id} to: {save_path}")
 
     save_file(save_path, contents)
@@ -152,8 +153,9 @@ async def upload_model(
 
     logger.info(f"[UPLOAD] Model {model.id} uploaded & processed for user {user_id}")
 
+    # ✅ Convert UUID to string to match response schema
     return ModelUploadResponse(
-        id=model.id,
+        id=str(model.id),
         name=model.name,
         file_url=file_url,
         thumbnail_url=f"{BASE_URL}/uploads/{thumbnail_rel_path}" if thumbnail_rel_path else None,
