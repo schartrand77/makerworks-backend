@@ -1,9 +1,9 @@
 import logging
-import subprocess
 import json
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
+import trimesh
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,15 +23,12 @@ logger.info(f"[UPLOAD] Base upload dir resolved: {BASE_UPLOAD_DIR}")
 
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
-ALLOWED_EXTENSIONS = {".stl", ".3mf"}
+ALLOWED_EXTENSIONS = {".stl"}
 ALLOWED_MODEL_TYPES = {
     "application/octet-stream",
     "application/vnd.ms-pki.stl",
     "model/stl",
-    "application/3mf",
 }
-
-BLENDER_SCRIPT = (Path(__file__).parent.parent / "scripts" / "blender_pipeline.py").resolve()
 
 
 def get_model_dir(user_id: str) -> Path:
@@ -59,47 +56,34 @@ def validate_file_size(data: bytes, max_size: int):
         raise HTTPException(400, f"File too large (max {max_size // (1024*1024)} MB)")
 
 
-def run_blender_pipeline(model_path: Path, output_dir: Path) -> dict:
-    if not BLENDER_SCRIPT.exists():
-        logger.error("[UPLOAD] Blender pipeline script missing.")
-        raise HTTPException(500, "Blender pipeline script missing.")
-
-    cmd = [
-        "blender",
-        "--background",
-        "--factory-startup",
-        "--python-expr",
-        # Ensure STL addon is enabled before running pipeline
-        "import bpy; bpy.ops.wm.addon_enable(module='io_mesh_stl')",
-        "--python", str(BLENDER_SCRIPT),
-        "--", str(model_path), str(output_dir)
-    ]
-    logger.info(f"[UPLOAD] Running Blender pipeline: {' '.join(cmd)}")
-
+def process_model_file(model_path: Path, output_dir: Path) -> dict:
+    """Generate metadata and a thumbnail for the uploaded model."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        mesh = trimesh.load(str(model_path), force="mesh")
     except Exception as e:
-        logger.exception(f"[UPLOAD] Failed to execute Blender pipeline: {e}")
-        raise HTTPException(500, "Failed to execute Blender pipeline.") from e
+        logger.exception(f"[UPLOAD] Failed to load model: {e}")
+        raise HTTPException(400, "Invalid 3D model") from e
 
-    if result.returncode != 0:
-        logger.error(f"[UPLOAD] Blender pipeline failed.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
-        if "import_mesh.stl" in result.stdout or "import_mesh.stl" in result.stderr:
-            raise HTTPException(500, "Blender STL import add-on is missing or failed to load.")
-        raise HTTPException(500, "Blender pipeline failed.")
+    metadata = {
+        "volume": float(mesh.volume) if mesh.is_volume else None,
+        "bbox": mesh.bounding_box.extents.tolist(),
+        "faces": int(len(mesh.faces)),
+        "vertices": int(len(mesh.vertices)),
+    }
 
-    stdout_clean = result.stdout.strip()
-    if not stdout_clean:
-        logger.error(f"[UPLOAD] Blender pipeline returned empty output.\nSTDERR:\n{result.stderr}")
-        raise HTTPException(500, "Blender pipeline returned empty output.")
-
+    thumb_rel = None
     try:
-        data = json.loads(stdout_clean)
-        logger.debug(f"[UPLOAD] Blender pipeline output parsed successfully.")
-        return data
-    except json.JSONDecodeError as e:
-        logger.error(f"[UPLOAD] Invalid JSON from Blender pipeline.\nSTDOUT:\n{stdout_clean}\nSTDERR:\n{result.stderr}")
-        raise HTTPException(500, "Invalid JSON from Blender pipeline.") from e
+        scene = mesh.scene()
+        png = scene.save_image(resolution=(512, 512), visible=False)
+        if png:
+            thumb_path = output_dir / f"{model_path.stem}_thumbnail.png"
+            with open(thumb_path, "wb") as f:
+                f.write(png)
+            thumb_rel = str(thumb_path.relative_to(BASE_UPLOAD_DIR))
+    except Exception as e:
+        logger.exception(f"[UPLOAD] Thumbnail generation failed: {e}")
+
+    return {"metadata": metadata, "thumbnail": thumb_rel}
 
 
 @router.post("", response_model=ModelUploadResponse)
@@ -119,7 +103,7 @@ async def upload_model(
     if not ext:
         raise HTTPException(400, "Missing file extension.")
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(400, f"Invalid file extension: {ext}. Only .stl and .3mf are allowed.")
+        raise HTTPException(400, f"Invalid file extension: {ext}. Only .stl is allowed.")
 
     contents = await file.read()
     validate_file_size(contents, MAX_FILE_SIZE_BYTES)
@@ -137,11 +121,10 @@ async def upload_model(
 
     save_file(save_path, contents)
 
-    blender_output = run_blender_pipeline(save_path, model_dir)
+    result = process_model_file(save_path, model_dir)
 
-    metadata = blender_output.get("metadata", {})
-    thumbnail_rel_path = blender_output.get("thumbnail")
-    webm_rel_path = blender_output.get("webm")
+    metadata = result.get("metadata", {})
+    thumbnail_rel_path = result.get("thumbnail")
 
     model_kwargs = {
         "id": model_id,

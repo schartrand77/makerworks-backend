@@ -5,7 +5,7 @@ This is the FastAPI + Celery + PostgreSQL backend powering the MakerWorks 3D pri
 ## Features
 - 🔐 JWT Auth, Signup, Login
 - 🔧 Upload & STL metadata extraction
-- 📸 Thumbnail rendering (Blender)
+- 📸 Thumbnail rendering (Trimesh)
 - 🎯 Redis queue + Celery for background jobs
 - 📁 PostgreSQL via SQLAlchemy
 - 🖼️ Avatar uploads via `/api/v1/users/avatar`

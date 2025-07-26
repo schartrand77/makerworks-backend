@@ -1,6 +1,8 @@
 import os
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 from uuid import UUID
 from datetime import datetime
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
@@ -39,22 +41,15 @@ async def upload_avatar(
     avatar_path = os.path.join(user_dir, "avatar.png")
 
     if ext in UPLOAD_EXTENSIONS_3D:
-        script_path = os.path.join(settings.BASE_DIR, "scripts", "render_avatar.py")
+        script_path = os.path.join(Path(__file__).resolve().parents[2], "scripts", "render_avatar.py")
         process = subprocess.run(
-            [
-                settings.BLENDER_PATH,
-                "--background",
-                "--python", script_path,
-                "--",
-                input_path,
-                user_dir
-            ],
+            [sys.executable, script_path, input_path, user_dir],
             capture_output=True,
             text=True
         )
 
         if process.returncode != 0:
-            raise HTTPException(status_code=500, detail="Blender render failed")
+            raise HTTPException(status_code=500, detail="Avatar render failed")
     else:
         try:
             with Image.open(input_path) as img:

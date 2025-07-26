@@ -21,12 +21,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime dependencies + Blender
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libpq-dev wget ca-certificates gnupg \
-    && echo "deb http://archive.ubuntu.com/ubuntu jammy universe" >> /etc/apt/sources.list \
-    && apt-get update && apt-get install -y \
-        blender \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

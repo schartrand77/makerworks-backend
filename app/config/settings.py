@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     stripe_secret_key: Optional[str] = None
     stripe_webhook_secret: Optional[str] = None
 
-    # Blender
-    blender_path: Optional[str] = None
-    use_gpu_for_blender: Optional[bool] = False
 
     # Admin seed
     admin_email: Optional[str] = None
