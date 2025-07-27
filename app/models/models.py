@@ -7,7 +7,15 @@ from sqlalchemy import (
     Column, String, Boolean, DateTime, Text, Float, ForeignKey,
     UniqueConstraint, Integer
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+import os
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import JSON
+
+if os.getenv("DATABASE_URL", "").startswith("sqlite"):
+    JSONType = JSON
+else:
+    from sqlalchemy.dialects.postgresql import JSONB
+    JSONType = JSONB
 from sqlalchemy.orm import relationship
 
 from app.db.base_class import Base
@@ -125,7 +133,7 @@ class ModelMetadata(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     volume = Column(Float, nullable=True)
-    bbox = Column(JSONB, nullable=True)
+    bbox = Column(JSONType, nullable=True)
     faces = Column(Integer, nullable=True)
     vertices = Column(Integer, nullable=True)
 
