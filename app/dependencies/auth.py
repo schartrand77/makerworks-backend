@@ -6,6 +6,7 @@ from app.models.models import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.services.session_backend import get_session_user_id
+from app.utils.filesystem import ensure_user_model_thumbnails
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,12 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+
+    # After successful authentication, ensure thumbnails exist for this user's models
+    try:
+        ensure_user_model_thumbnails(str(user.id))
+    except Exception as e:
+        logger.exception("[AUTH] Thumbnail synchronization failed: %s", e)
 
     return user
 
