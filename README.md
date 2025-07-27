@@ -15,6 +15,9 @@ The repository ships with a `.env.example` file containing all the
 environment variables required to run the application. Copy it to `.env`
 and update the values for your environment.
 
+Additional guidance on contributing new routes and features can be found in
+[docs/FUTURE_API_GUIDELINES.md](docs/FUTURE_API_GUIDELINES.md).
+
 ## Dev Setup
 
 ```bash
