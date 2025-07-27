@@ -1,10 +1,12 @@
-from fastapi import APIRouter, status, Depends
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
 
 from app.db.session import get_async_session
+from app.utils.system_info import get_system_status_snapshot
 
 router = APIRouter()
 
@@ -53,21 +55,17 @@ async def system_ping():
 
 @router.get("/tables", tags=["system"], status_code=status.HTTP_200_OK)
 async def list_tables(session: AsyncSession = Depends(get_async_session)):
-    query = text("""
+    query = text(
+        """
         SELECT schemaname, tablename, tableowner
         FROM pg_tables
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
         ORDER BY schemaname, tablename;
-    """)
+    """
+    )
     result = await session.execute(query)
     rows = result.fetchall()
-    return [
-        {
-            "schema": row[0],
-            "table": row[1],
-            "owner": row[2]
-        } for row in rows
-    ]
+    return [{"schema": row[0], "table": row[1], "owner": row[2]} for row in rows]
 
 
 @router.get("/handshake", tags=["system"], status_code=status.HTTP_200_OK)
@@ -80,3 +78,9 @@ async def system_handshake():
             "timestamp": datetime.utcnow().isoformat(),
         }
     )
+
+
+@router.get("/snapshot", tags=["system"], status_code=status.HTTP_200_OK)
+async def system_snapshot():
+    """Return a snapshot of system status for monitoring."""
+    return JSONResponse(get_system_status_snapshot())
